@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# Google service account credentials (NEVER commit these!)
+*credentials*.json
+*-*.json
+!package*.json
+!tsconfig*.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
