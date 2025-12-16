@@ -26,31 +26,83 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 3: Connect to Google Sheets
-    const sheets = await getGoogleSheetsClient();
+    console.log("📊 Fetching tasks for date:", date);
+    let sheets;
+    try {
+      sheets = await getGoogleSheetsClient();
+    } catch (authError) {
+      console.error("❌ Failed to authenticate with Google Sheets:", authError);
+      return NextResponse.json(
+        {
+          error: "Failed to authenticate with Google Sheets",
+          details: authError instanceof Error ? authError.message : "Unknown authentication error",
+          hint: "Check your credentials and ensure the service account email has access to the spreadsheet",
+        },
+        { status: 500 }
+      );
+    }
 
     // Step 4: Get your spreadsheet ID from environment variables
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
 
     if (!spreadsheetId) {
+      console.error("❌ GOOGLE_SHEETS_SPREADSHEET_ID is not set");
       return NextResponse.json(
         { error: "Spreadsheet ID not configured" },
         { status: 500 }
       );
     }
 
+    console.log("📋 Using spreadsheet ID:", spreadsheetId.substring(0, 10) + "...");
+    console.log("📄 Using sheet name:", sheetName);
+
     // Step 5: Read data from the sheet
     // Range: Sheet1!A2:E1000 means:
-    // - Sheet1: the sheet name
+    // - Sheet1: the sheet name (configurable via env var)
     // - A2:E1000: columns A through E, rows 2 to 1000 (skip header row 1)
-    const range = "Sheet1!A2:E1000";
+    const range = `${sheetName}!A2:E1000`;
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
+    let response;
+    try {
+      response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+      console.log("✅ Successfully retrieved data from Google Sheets");
+    } catch (apiError: any) {
+      console.error("❌ Google Sheets API error:", apiError);
+      
+      // Provide helpful error messages based on common issues
+      let errorMessage = apiError?.message || "Unknown error";
+      let hint = "";
+
+      if (apiError?.code === 403 || errorMessage.includes("permission") || errorMessage.includes("access")) {
+        hint = "The service account may not have access to the spreadsheet. Share the spreadsheet with the service account email.";
+      } else if (apiError?.code === 404 || errorMessage.includes("not found")) {
+        hint = "Spreadsheet not found. Check that the GOOGLE_SHEETS_SPREADSHEET_ID is correct and the spreadsheet exists.";
+      } else if (errorMessage.includes("Unable to parse range")) {
+        hint = `Sheet "${sheetName}" may not exist. Check the sheet name or set GOOGLE_SHEETS_SHEET_NAME environment variable.`;
+      }
+
+      return NextResponse.json(
+        {
+          error: "Failed to read from Google Sheets",
+          details: errorMessage,
+          hint,
+          code: apiError?.code,
+        },
+        { status: 500 }
+      );
+    }
 
     // Step 6: Get the rows (or empty array if no data)
     const rows = response.data.values || [];
+    console.log(`📥 Retrieved ${rows.length} total rows from spreadsheet`);
+    
+    if (rows.length === 0) {
+      console.log("⚠️ No data found in spreadsheet. This might be normal if the sheet is empty.");
+    }
 
     // Step 7: Filter tasks for the requested date and convert to our format
     // In Google Sheets:
@@ -74,6 +126,7 @@ export async function GET(request: NextRequest) {
       }));
 
     // Step 8: Return the tasks as JSON
+    console.log(`✅ Returning ${tasks.length} tasks for date ${date}`);
     return NextResponse.json({
       success: true,
       date,
@@ -82,11 +135,29 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     // If something goes wrong, log it and return an error
-    console.error("Error fetching tasks:", error);
+    console.error("❌ Error fetching tasks:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Log detailed error for debugging (only in development or if detailed logging is enabled)
+    if (process.env.NODE_ENV === "development" || process.env.ENABLE_DETAILED_ERRORS === "true") {
+      console.error("Error stack:", errorStack);
+      console.error("Environment check:", {
+        hasCredentialsJson: !!process.env.GOOGLE_SHEETS_CREDENTIALS_JSON,
+        hasCredentialsBase64: !!process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
+        hasCredentialsPath: !!process.env.GOOGLE_SHEETS_CREDENTIALS,
+        hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      });
+    }
+
     return NextResponse.json(
       {
         error: "Failed to fetch tasks",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: errorMessage,
+        // Only include stack in development
+        ...(process.env.NODE_ENV === "development" && errorStack
+          ? { stack: errorStack }
+          : {}),
       },
       { status: 500 }
     );
@@ -119,10 +190,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3: Connect to Google Sheets
-    const sheets = await getGoogleSheetsClient();
+    let sheets;
+    try {
+      sheets = await getGoogleSheetsClient();
+    } catch (authError) {
+      console.error("❌ Failed to authenticate with Google Sheets:", authError);
+      return NextResponse.json(
+        {
+          error: "Failed to authenticate with Google Sheets",
+          details: authError instanceof Error ? authError.message : "Unknown authentication error",
+        },
+        { status: 500 }
+      );
+    }
 
     // Step 4: Get your spreadsheet ID from environment variables
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
 
     if (!spreadsheetId) {
       return NextResponse.json(
@@ -140,9 +224,9 @@ export async function POST(request: NextRequest) {
     // Format: [id, date, text, completed, created_at]
     const newRow = [id, date, text.trim(), completedValue, created_at];
 
-    // Step 7: Append the new row to Sheet1
+    // Step 7: Append the new row to the sheet
     // Range: Sheet1!A:E means append to columns A through E
-    const range = "Sheet1!A:E";
+    const range = `${sheetName}!A:E`;
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
