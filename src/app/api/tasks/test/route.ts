@@ -76,10 +76,11 @@ export async function GET(request: NextRequest) {
         status: "success",
         title: spreadsheetInfo.data.properties?.title || "Unknown",
         spreadsheetId: spreadsheetId.substring(0, 10) + "...",
-        sheets: spreadsheetInfo.data.sheets?.map((s: any) => ({
-          title: s.properties?.title,
-          sheetId: s.properties?.sheetId,
-        })) || [],
+        sheets:
+          spreadsheetInfo.data.sheets?.map((s: any) => ({
+            title: s.properties?.title,
+            sheetId: s.properties?.sheetId,
+          })) || [],
       };
 
       // Check if the target sheet exists
@@ -89,7 +90,11 @@ export async function GET(request: NextRequest) {
 
       if (!targetSheet) {
         diagnostics.warnings.push(
-          `Sheet "${sheetName}" not found. Available sheets: ${spreadsheetInfo.data.sheets?.map((s: any) => s.properties?.title).join(", ") || "none"}`
+          `Sheet "${sheetName}" not found. Available sheets: ${
+            spreadsheetInfo.data.sheets
+              ?.map((s: any) => s.properties?.title)
+              .join(", ") || "none"
+          }`
         );
       }
 
@@ -127,7 +132,9 @@ export async function GET(request: NextRequest) {
           "Spreadsheet not found. Check that GOOGLE_SHEETS_SPREADSHEET_ID is correct."
         );
       } else {
-        diagnostics.errors.push(`API error: ${apiError?.message || "Unknown error"}`);
+        diagnostics.errors.push(
+          `API error: ${apiError?.message || "Unknown error"}`
+        );
       }
 
       diagnostics.summary = {

@@ -114,33 +114,39 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 If data is not showing in production, use the test endpoint to diagnose issues:
 
 1. **Visit the test endpoint:** `https://your-site.com/api/tasks/test`
+
    - This will show detailed diagnostics about your Google Sheets connection
    - Check for errors about permissions, spreadsheet ID, or credentials
 
 2. **Common issues and solutions:**
 
    **Issue: "Permission denied" or "Access denied"**
+
    - Solution: Share your Google Sheet with the service account email
    - Find the service account email in your credentials JSON (field: `client_email`)
    - In Google Sheets, click "Share" and add that email with "Editor" access
 
    **Issue: "Spreadsheet not found"**
+
    - Solution: Verify `GOOGLE_SHEETS_SPREADSHEET_ID` is correct
    - Get the ID from the URL: `https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit`
    - Make sure there are no extra spaces or characters
 
    **Issue: "Sheet not found"**
+
    - Solution: Check the sheet name (default is "Sheet1")
    - Set `GOOGLE_SHEETS_SHEET_NAME` environment variable if your sheet has a different name
    - The test endpoint will show all available sheet names
 
    **Issue: "Invalid credentials"**
+
    - Solution: Verify your credentials JSON is correctly formatted
    - For production, use `GOOGLE_SHEETS_CREDENTIALS_BASE64` (most reliable)
    - Encode your JSON: `cat credentials.json | base64` (then paste the result)
    - Or use `GOOGLE_SHEETS_CREDENTIALS_JSON` with the entire JSON as a single-line string
 
    **Issue: No data showing but no errors**
+
    - Check that your spreadsheet has data in the correct format:
      - Column A: id
      - Column B: date (format: M/D/YYYY, e.g., "12/25/2024")
