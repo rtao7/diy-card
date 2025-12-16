@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { createTask } from "@/lib/tasks";
 
 interface Task {
   id: string;
@@ -100,6 +101,17 @@ export function TodoCard({
 }: TodoCardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
+  // Update tasks when initialTasks prop changes (when new data is fetched from API)
+  useEffect(() => {
+    console.log("🔄 TodoCard: Updating tasks from prop", {
+      date,
+      initialTasksCount: initialTasks.length,
+      initialTasks,
+    });
+    setTasks(initialTasks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTasks, date]);
+
   // Calculate empty slots to always have 11 rows total (cap tasks at 11 if more exist)
   const totalRows = 11;
   const displayedTasks = tasks.slice(0, totalRows);
@@ -116,25 +128,60 @@ export function TodoCard({
     );
   }, []);
 
-  const addTask = useCallback((text: string, insertIndex: number) => {
-    if (!text.trim()) return;
+  const addTask = useCallback(
+    async (text: string, insertIndex: number) => {
+      if (!text.trim()) return;
 
-    const newTask: Task = {
-      id: `task-${Date.now()}-${insertIndex}`,
-      text: text.trim(),
-      completed: false,
-    };
+      const trimmedText = text.trim();
 
-    setTasks((prevTasks) => {
-      // Insert at the position where the empty slot was
-      // For empty slots, insertIndex should be >= prevTasks.length
-      // We'll insert at the end (prevTasks.length) to maintain order
-      const insertPos = Math.min(insertIndex, prevTasks.length);
-      const newTasks = [...prevTasks];
-      newTasks.splice(insertPos, 0, newTask);
-      return newTasks;
-    });
-  }, []);
+      // Optimistically add task to UI immediately
+      const tempId = `temp-${Date.now()}-${insertIndex}`;
+      const optimisticTask: Task = {
+        id: tempId,
+        text: trimmedText,
+        completed: false,
+      };
+
+      setTasks((prevTasks) => {
+        // Insert at the position where the empty slot was
+        // For empty slots, insertIndex should be >= prevTasks.length
+        // We'll insert at the end (prevTasks.length) to maintain order
+        const insertPos = Math.min(insertIndex, prevTasks.length);
+        const newTasks = [...prevTasks];
+        newTasks.splice(insertPos, 0, optimisticTask);
+        return newTasks;
+      });
+
+      // Save to spreadsheet via API
+      try {
+        const createdTask = await createTask(trimmedText, date, false);
+
+        // Replace the temporary task with the real one from the server
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === tempId
+              ? {
+                  id: createdTask.id,
+                  text: createdTask.text,
+                  completed: createdTask.completed,
+                }
+              : task
+          )
+        );
+
+        console.log("✅ Task saved to spreadsheet:", createdTask);
+      } catch (error) {
+        console.error("❌ Failed to save task to spreadsheet:", error);
+
+        // Remove the optimistic task on error
+        setTasks((prevTasks) => prevTasks.filter((task) => task.id !== tempId));
+
+        // You could show an error toast here if you have a toast system
+        alert("Failed to save task. Please try again.");
+      }
+    },
+    [date]
+  );
 
   const updateTaskText = useCallback((taskId: string, text: string) => {
     setTasks((prevTasks) =>

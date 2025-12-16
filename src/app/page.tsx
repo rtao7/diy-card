@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { TodoCard } from "@/components/TodoCard";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
+import { getTasksForDate } from "@/lib/tasks";
 import {
   FlipHorizontal,
   FlipHorizontal2,
@@ -32,86 +33,19 @@ function getDayName(date: Date): string {
   return days[date.getDay()];
 }
 
-function getTasksForDate(
-  date: Date,
-  today: Date
-): Array<{ id: string; text: string; completed: boolean }> {
-  // Normalize dates to compare only the date part (without time)
-  const normalizeDate = (d: Date) => {
-    const normalized = new Date(d);
-    normalized.setHours(0, 0, 0, 0);
-    return normalized;
-  };
-
-  const normalizedToday = normalizeDate(today);
-  const normalizedDate = normalizeDate(date);
-  const daysDiff = Math.floor(
-    (normalizedToday.getTime() - normalizedDate.getTime()) /
-      (1000 * 60 * 60 * 24)
-  );
-
-  // Only generate tasks for past dates (last 7 days)
-  if (daysDiff <= 0 || daysDiff > 7) {
-    return [];
-  }
-
-  // Different task sets for different days
-  const taskSets = [
-    // 1 day ago
-    [
-      { id: "1", text: "Review project proposal", completed: true },
-      { id: "2", text: "Team standup meeting", completed: true },
-      { id: "3", text: "Update documentation", completed: false },
-    ],
-    // 2 days ago
-    [
-      { id: "1", text: "Grocery shopping", completed: true },
-      { id: "2", text: "Gym workout", completed: true },
-      { id: "3", text: "Read chapter 5", completed: true },
-      { id: "4", text: "Plan weekend trip", completed: false },
-    ],
-    // 3 days ago
-    [
-      { id: "1", text: "Client presentation", completed: true },
-      { id: "2", text: "Send follow-up emails", completed: true },
-      { id: "3", text: "Code review", completed: true },
-    ],
-    // 4 days ago
-    [
-      { id: "1", text: "Doctor appointment", completed: true },
-      { id: "2", text: "Pick up dry cleaning", completed: true },
-      { id: "3", text: "Update resume", completed: false },
-    ],
-    // 5 days ago
-    [
-      { id: "1", text: "Weekly planning session", completed: true },
-      { id: "2", text: "Budget review", completed: true },
-      { id: "3", text: "Call insurance company", completed: true },
-      { id: "4", text: "Organize workspace", completed: false },
-    ],
-    // 6 days ago
-    [
-      { id: "1", text: "Morning run", completed: true },
-      { id: "2", text: "Coffee with friend", completed: true },
-      { id: "3", text: "Research new tools", completed: false },
-    ],
-    // 7 days ago
-    [
-      { id: "1", text: "Weekend cleanup", completed: true },
-      { id: "2", text: "Meal prep for week", completed: true },
-      { id: "3", text: "Watch tutorial video", completed: true },
-    ],
-  ];
-
-  // Return tasks for the specific day (daysDiff is 1-indexed for array)
-  return taskSets[daysDiff - 1] || [];
-}
+// Removed hardcoded tasks - now fetching from Google Sheets via API
 
 export default function Home() {
   const today = new Date();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [focusedIndex, setFocusedIndex] = useState(100); // Start with today's card
+
+  // Store tasks for each date (so we don't fetch multiple times)
+  const [tasksCache, setTasksCache] = useState<
+    Record<string, Array<{ id: string; text: string; completed: boolean }>>
+  >({});
+  const [loadingDates, setLoadingDates] = useState<Set<string>>(new Set());
 
   // Generate many cards (100 days before to 100 days after = 201 cards total)
   const totalDays = 201;
@@ -127,12 +61,119 @@ export default function Home() {
     };
   });
 
-  // Today's tasks
-  const todayTasks = [
-    { id: "1", text: "Call mom", completed: true },
-    { id: "2", text: "Work on design system", completed: true },
-    { id: "3", text: "Coding session", completed: false },
-  ];
+  // Helper function to fetch tasks for a specific date
+  const fetchTasksForDate = async (dateString: string) => {
+    // Don't fetch if we already have the tasks or are currently loading
+    if (tasksCache[dateString]) {
+      return; // Already have it
+    }
+
+    if (loadingDates.has(dateString)) {
+      return; // Already loading
+    }
+
+    // Mark as loading
+    setLoadingDates((prev) => new Set(prev).add(dateString));
+
+    try {
+      // Fetch tasks from API
+      const tasks = await getTasksForDate(dateString);
+
+      // Store in cache
+      setTasksCache((prev) => ({
+        ...prev,
+        [dateString]: tasks,
+      }));
+    } catch (error) {
+      console.error(`❌ Error fetching tasks for ${dateString}:`, error);
+      // Store empty array on error so we don't keep trying
+      setTasksCache((prev) => ({
+        ...prev,
+        [dateString]: [],
+      }));
+    } finally {
+      // Remove from loading set
+      setLoadingDates((prev) => {
+        const next = new Set(prev);
+        next.delete(dateString);
+        return next;
+      });
+    }
+  };
+
+  // Fetch tasks for focused card + nearby cards (±5 days)
+  useEffect(() => {
+    const loadTasksForFocusedAndNearby = async () => {
+      const daysToPreload = 5; // Load tasks for 5 days before and after focused card
+      const datesToLoad: string[] = [];
+
+      // Calculate dates to load (focused + nearby)
+      for (let offset = -daysToPreload; offset <= daysToPreload; offset++) {
+        const targetDate = new Date(today);
+        targetDate.setDate(
+          today.getDate() + (focusedIndex - daysBefore + offset)
+        );
+        const dateString = formatDate(targetDate);
+        datesToLoad.push(dateString);
+      }
+
+      console.log(
+        "🔍 Loading tasks for focused card and nearby dates:",
+        datesToLoad
+      );
+
+      // Fetch all dates in parallel (but respect rate limits)
+      const fetchPromises = datesToLoad.map((dateString) =>
+        fetchTasksForDate(dateString)
+      );
+      await Promise.all(fetchPromises);
+    };
+
+    loadTasksForFocusedAndNearby();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedIndex]); // Re-fetch when focused card changes
+
+  // Initial load: Fetch tasks for a date range (last 30 days + next 30 days)
+  useEffect(() => {
+    const loadInitialTasks = async () => {
+      const daysToLoad = 30; // Load 30 days before and after today
+      const datesToLoad: string[] = [];
+
+      for (let offset = -daysToLoad; offset <= daysToLoad; offset++) {
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + offset);
+        const dateString = formatDate(targetDate);
+        datesToLoad.push(dateString);
+      }
+
+      console.log(
+        "🚀 Initial load: Fetching tasks for date range:",
+        datesToLoad.length,
+        "dates"
+      );
+
+      // Fetch in batches to avoid overwhelming the API
+      const batchSize = 10;
+      for (let i = 0; i < datesToLoad.length; i += batchSize) {
+        const batch = datesToLoad.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map((dateString) => fetchTasksForDate(dateString))
+        );
+        // Small delay between batches to be nice to the API
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      console.log(
+        "✅ Initial load complete. Cache has",
+        Object.keys(tasksCache).length,
+        "dates"
+      );
+    };
+
+    // Only run once on mount
+    loadInitialTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps = run once on mount
 
   // Handle scroll to determine focused card
   useEffect(() => {
@@ -208,12 +249,10 @@ export default function Home() {
         >
           {cards.map((card, index) => {
             const isFocused = index === focusedIndex;
-            const isToday = index === daysBefore;
 
-            // Get tasks for this date (today's tasks or past date tasks)
-            const cardTasks = isToday
-              ? todayTasks
-              : getTasksForDate(card.date, today);
+            // Get tasks from cache (fetched from Google Sheets)
+            // Show tasks on all cards (not just focused) so they're always visible
+            const cardTasks = tasksCache[card.formattedDate] || [];
 
             return (
               <div
@@ -226,7 +265,7 @@ export default function Home() {
                 <TodoCard
                   date={card.formattedDate}
                   day={card.day}
-                  tasks={isFocused ? cardTasks : []}
+                  tasks={cardTasks} // Show tasks on all cards
                   faded={!isFocused}
                   focused={isFocused}
                 />
