@@ -45,6 +45,19 @@ Copy the entire output (it's a long string).
 - **Value**: The base64-encoded string (from step 2)
 - **Environment**: Production, Preview, Development (select all)
 
+#### Variable 3: `API_KEY`
+
+- **Value**: A secure random string (generate with `openssl rand -hex 32` or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+- **Environment**: Production, Preview, Development (select all)
+- **Purpose**: Protects write operations (creating/editing tasks) - only you can modify data
+- **Important**: This makes the API read-only for public users, writable only by you
+
+#### Variable 4: `NEXT_PUBLIC_API_KEY`
+
+- **Value**: Same value as `API_KEY` (copy it)
+- **Environment**: Production, Preview, Development (select all)
+- **Purpose**: Allows the frontend to include the API key when creating tasks
+
 ### 4. Share Your Google Sheet
 
 1. Open your Google Sheet

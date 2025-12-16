@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleSheetsClient } from "@/lib/googleSheets";
+import { requireApiKey } from "@/lib/auth";
 
 /**
  * GET handler - Fetches tasks for a specific date
@@ -186,12 +187,27 @@ export async function GET(request: NextRequest) {
  * POST handler - Creates a new task
  *
  * Usage: POST /api/tasks
+ * Headers: Authorization: Bearer YOUR_API_KEY (or X-API-Key: YOUR_API_KEY)
  * Body: { text: string, date: string, completed?: boolean }
  *
- * This is PUBLIC - anyone can create tasks (no authentication needed)
+ * This requires API key authentication - only authorized users can create tasks
+ * GET requests are public (read-only), but POST requires authentication
  */
 export async function POST(request: NextRequest) {
   try {
+    // Step 0: Check API key authentication (required for write operations)
+    const authError = requireApiKey(request);
+    if (authError) {
+      return NextResponse.json(
+        {
+          error: authError.error,
+          message: authError.message,
+          hint: authError.hint,
+        },
+        { status: authError.status }
+      );
+    }
+
     // Step 1: Parse the request body
     const body = await request.json();
     const { text, date, completed } = body;

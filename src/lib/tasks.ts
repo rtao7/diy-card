@@ -55,11 +55,21 @@ export async function createTask(
   completed: boolean = false
 ): Promise<Task> {
   try {
+    // Get API key from environment variable (NEXT_PUBLIC_API_KEY for client-side)
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
+    // Add API key to headers if available
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch("/api/tasks", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({ text, date, completed }),
     });
 

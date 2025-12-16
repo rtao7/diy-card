@@ -38,6 +38,8 @@ This project requires Google Sheets API credentials to function. You need to set
 1. **`GOOGLE_SHEETS_CREDENTIALS_JSON`** (for production/cloud platforms) - The entire service account JSON as a string
 2. **`GOOGLE_SHEETS_CREDENTIALS`** (for local development) - Path to your credentials JSON file
 3. **`GOOGLE_SHEETS_SPREADSHEET_ID`** - Your Google Spreadsheet ID
+4. **`API_KEY`** (server-side) - Secret API key for write operations (create/edit tasks) - **Required to protect write access**
+5. **`NEXT_PUBLIC_API_KEY`** (client-side) - Same API key, exposed to client for frontend requests
 
 ### Local Development Setup
 
@@ -48,7 +50,24 @@ This project requires Google Sheets API credentials to function. You need to set
 ```bash
 GOOGLE_SHEETS_CREDENTIALS=/path/to/your/credentials.json
 GOOGLE_SHEETS_SPREADSHEET_ID=your-spreadsheet-id-here
+API_KEY=your-secret-api-key-here
+NEXT_PUBLIC_API_KEY=your-secret-api-key-here
 ```
+
+**Note:** Generate a secure random API key. You can use:
+
+```bash
+# Generate a random API key
+openssl rand -hex 32
+# or
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Security Note:**
+
+- **GET requests** (reading tasks) are **public** - anyone can view tasks
+- **POST requests** (creating tasks) require the API key - only you can create/edit tasks
+- Keep your `API_KEY` secret and never commit it to git
 
 ### Production Deployment
 
