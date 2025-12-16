@@ -59,8 +59,12 @@ export async function GET(request: NextRequest) {
     // Column C (index 2) = text
     // Column D (index 3) = completed (stored as "true" or "false" string)
     // Column E (index 4) = created_at
+    // Validate rows have minimum required columns (at least date column at index 1)
     const tasks = rows
-      .filter((row) => row[1] === date) // Only tasks matching the requested date
+      .filter((row) => {
+        // Ensure row has at least 2 elements (id and date) before accessing row[1]
+        return row && row.length >= 2 && row[1] === date;
+      })
       .map((row) => ({
         id: row[0] || "", // Column A: id
         date: row[1] || "", // Column B: date

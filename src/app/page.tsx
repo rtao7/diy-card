@@ -47,6 +47,19 @@ export default function Home() {
   >({});
   const [loadingDates, setLoadingDates] = useState<Set<string>>(new Set());
 
+  // Use refs to track current state to avoid stale closures
+  const tasksCacheRef = useRef(tasksCache);
+  const loadingDatesRef = useRef(loadingDates);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    tasksCacheRef.current = tasksCache;
+  }, [tasksCache]);
+
+  useEffect(() => {
+    loadingDatesRef.current = loadingDates;
+  }, [loadingDates]);
+
   // Generate many cards (100 days before to 100 days after = 201 cards total)
   const totalDays = 201;
   const daysBefore = 100;
@@ -62,13 +75,15 @@ export default function Home() {
   });
 
   // Helper function to fetch tasks for a specific date
+  // Uses refs to avoid stale closure issues
   const fetchTasksForDate = async (dateString: string) => {
     // Don't fetch if we already have the tasks or are currently loading
-    if (tasksCache[dateString]) {
+    // Use refs to get current values instead of closure values
+    if (tasksCacheRef.current[dateString]) {
       return; // Already have it
     }
 
-    if (loadingDates.has(dateString)) {
+    if (loadingDatesRef.current.has(dateString)) {
       return; // Already loading
     }
 
