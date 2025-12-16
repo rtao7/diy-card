@@ -81,9 +81,7 @@ export function Header() {
 
         <div>
           <p className="font-sans">DYI Series - Analog Card</p>
-          <p className="font-sans text-sm">
-            Write it down. Reflect. Never forget.
-          </p>
+          <p className="font-sans text-sm">Where did my time go? 😳</p>
         </div>
       </div>
       <div className="flex items-center justify-end">
