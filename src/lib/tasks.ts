@@ -22,21 +22,62 @@ export async function getTasksForDate(date: string): Promise<Task[]> {
     // Call your API endpoint
     const response = await fetch(`/api/tasks?date=${encodeURIComponent(date)}`);
 
-    // Check if the request was successful
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+    // Parse the JSON response (even if it's an error)
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      // If response is not JSON, throw with status text
+      throw new Error(
+        `Failed to fetch tasks: ${response.status} ${response.statusText}`
+      );
     }
 
-    // Parse the JSON response
-    const data = await response.json();
+    // Check if the request was successful
+    if (!response.ok) {
+      // Log the error details from the API
+      console.error("❌ API Error:", {
+        status: response.status,
+        error: data.error,
+        details: data.details,
+        hint: data.hint,
+        environmentStatus: data.environmentStatus,
+      });
+
+      // Throw error with details from API response
+      const errorMessage =
+        data.details ||
+        data.error ||
+        `Failed to fetch tasks: ${response.statusText}`;
+      const error = new Error(errorMessage);
+
+      // Add additional properties for debugging
+      (error as any).apiError = {
+        status: response.status,
+        error: data.error,
+        details: data.details,
+        hint: data.hint,
+        environmentStatus: data.environmentStatus,
+      };
+
+      throw error;
+    }
+
     console.log("📥 Raw API response:", data);
     console.log("📋 Tasks from API:", data.tasks);
 
     // Return the tasks array
     return data.tasks || [];
   } catch (error) {
-    console.error("Error fetching tasks:", error);
+    console.error("❌ Error fetching tasks:", error);
+
+    // Log additional error details if available
+    if ((error as any)?.apiError) {
+      console.error("API Error Details:", (error as any).apiError);
+    }
+
     // Return empty array if there's an error (so UI doesn't break)
+    // But log the error so it's visible in console
     return [];
   }
 }

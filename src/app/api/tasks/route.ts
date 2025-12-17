@@ -117,6 +117,14 @@ export async function GET(request: NextRequest) {
       console.log(
         "⚠️ No data found in spreadsheet. This might be normal if the sheet is empty."
       );
+      // Return empty tasks array instead of error
+      return NextResponse.json({
+        success: true,
+        date,
+        tasks: [],
+        count: 0,
+        message: "No tasks found for this date",
+      });
     }
 
     // Step 7: Filter tasks for the requested date and convert to our format
@@ -155,24 +163,36 @@ export async function GET(request: NextRequest) {
       error instanceof Error ? error.message : "Unknown error";
     const errorStack = error instanceof Error ? error.stack : undefined;
 
-    // Log detailed error for debugging (only in development or if detailed logging is enabled)
-    if (
-      process.env.NODE_ENV === "development" ||
-      process.env.ENABLE_DETAILED_ERRORS === "true"
-    ) {
-      console.error("Error stack:", errorStack);
-      console.error("Environment check:", {
-        hasCredentialsJson: !!process.env.GOOGLE_SHEETS_CREDENTIALS_JSON,
-        hasCredentialsBase64: !!process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
-        hasCredentialsPath: !!process.env.GOOGLE_SHEETS_CREDENTIALS,
-        hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      });
-    }
+    // Always log detailed error for debugging in production
+    console.error("Error stack:", errorStack);
+    console.error("Environment check:", {
+      hasCredentialsJson: !!process.env.GOOGLE_SHEETS_CREDENTIALS_JSON,
+      hasCredentialsBase64: !!process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
+      hasCredentialsPath: !!process.env.GOOGLE_SHEETS_CREDENTIALS,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetIdSet: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    });
 
+    // Return detailed error information
     return NextResponse.json(
       {
         error: "Failed to fetch tasks",
         details: errorMessage,
+        // Include helpful hints based on error type
+        hint: errorMessage.includes("credentials")
+          ? "Check your Google Sheets credentials in environment variables"
+          : errorMessage.includes("Spreadsheet ID")
+          ? "Check that GOOGLE_SHEETS_SPREADSHEET_ID is set correctly"
+          : "Check Vercel logs for more details",
+        // Include environment status (without sensitive data)
+        environmentStatus: {
+          hasCredentials: !!(
+            process.env.GOOGLE_SHEETS_CREDENTIALS_JSON ||
+            process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64 ||
+            process.env.GOOGLE_SHEETS_CREDENTIALS
+          ),
+          hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+        },
         // Only include stack in development
         ...(process.env.NODE_ENV === "development" && errorStack
           ? { stack: errorStack }
