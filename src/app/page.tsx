@@ -39,7 +39,7 @@ export default function Home() {
   const today = new Date();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [focusedIndex, setFocusedIndex] = useState(100); // Start with today's card
+  const [focusedIndex, setFocusedIndex] = useState(5); // Start with today's card (index 5 in 10-card array)
 
   // Store tasks for each date (so we don't fetch multiple times)
   const [tasksCache, setTasksCache] = useState<
@@ -60,12 +60,12 @@ export default function Home() {
     loadingDatesRef.current = loadingDates;
   }, [loadingDates]);
 
-  // Generate many cards (100 days before to 100 days after = 201 cards total)
-  const totalDays = 201;
-  const daysBefore = 100;
+  // Generate 10 cards (5 days before to 4 days after today = 10 cards total)
+  const totalDays = 10;
+  const daysBefore = 5; // 5 days before today
   const cards = Array.from({ length: totalDays }, (_, i) => {
     const date = new Date(today);
-    date.setDate(today.getDate() + (i - daysBefore)); // -100 to +100
+    date.setDate(today.getDate() + (i - daysBefore)); // -5 to +4
     return {
       date,
       formattedDate: formatDate(date),
@@ -73,6 +73,48 @@ export default function Home() {
       isToday: i === daysBefore,
     };
   });
+
+  // Rate limiting: track request times to avoid hitting quota
+  const requestTimesRef = useRef<number[]>([]);
+  const RATE_LIMIT_DELAY = 200; // Minimum 200ms between requests (5 requests/second max)
+  const MAX_REQUESTS_PER_WINDOW = 50; // Max 50 requests per 100 seconds
+  const WINDOW_DURATION = 100000; // 100 seconds in milliseconds
+
+  // Helper function to wait if we're hitting rate limits
+  const waitForRateLimit = async () => {
+    const now = Date.now();
+    const recentRequests = requestTimesRef.current.filter(
+      (time) => now - time < WINDOW_DURATION
+    );
+    requestTimesRef.current = recentRequests;
+
+    // If we're approaching the limit, wait
+    if (recentRequests.length >= MAX_REQUESTS_PER_WINDOW) {
+      const oldestRequest = Math.min(...recentRequests);
+      const waitTime = WINDOW_DURATION - (now - oldestRequest) + 1000; // Add 1 second buffer
+      console.log(
+        `⏳ Rate limit: waiting ${Math.ceil(
+          waitTime / 1000
+        )}s before next request`
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+
+    // Always wait minimum delay between requests
+    const lastRequest =
+      requestTimesRef.current[requestTimesRef.current.length - 1];
+    if (lastRequest) {
+      const timeSinceLastRequest = now - lastRequest;
+      if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest)
+        );
+      }
+    }
+
+    // Record this request
+    requestTimesRef.current.push(Date.now());
+  };
 
   // Helper function to fetch tasks for a specific date
   // Uses refs to avoid stale closure issues
@@ -87,6 +129,9 @@ export default function Home() {
       return; // Already loading
     }
 
+    // Wait for rate limit before making request
+    await waitForRateLimit();
+
     // Mark as loading
     setLoadingDates((prev) => new Set(prev).add(dateString));
 
@@ -99,13 +144,26 @@ export default function Home() {
         ...prev,
         [dateString]: tasks,
       }));
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Error fetching tasks for ${dateString}:`, error);
-      // Store empty array on error so we don't keep trying
-      setTasksCache((prev) => ({
-        ...prev,
-        [dateString]: [],
-      }));
+
+      // If it's a quota error, don't store empty array - we'll retry later
+      const isQuotaError =
+        error?.message?.includes("Quota exceeded") ||
+        error?.apiError?.details?.includes("Quota exceeded");
+
+      if (isQuotaError) {
+        console.warn(
+          "⚠️ Quota exceeded - will retry later. Please wait a moment."
+        );
+        // Don't cache empty array for quota errors - allow retry
+      } else {
+        // Store empty array on other errors so we don't keep trying
+        setTasksCache((prev) => ({
+          ...prev,
+          [dateString]: [],
+        }));
+      }
     } finally {
       // Remove from loading set
       setLoadingDates((prev) => {
@@ -116,45 +174,37 @@ export default function Home() {
     }
   };
 
-  // Fetch tasks for focused card + nearby cards (±5 days)
+  // Fetch tasks for focused card only (no preloading to avoid quota)
+  // Since we only have 10 cards and they're all loaded initially, we don't need aggressive preloading
   useEffect(() => {
-    const loadTasksForFocusedAndNearby = async () => {
-      const daysToPreload = 5; // Load tasks for 5 days before and after focused card
-      const datesToLoad: string[] = [];
+    const loadTasksForFocused = async () => {
+      // Only load the focused card's tasks if we don't have it
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() + (focusedIndex - daysBefore));
+      const dateString = formatDate(targetDate);
 
-      // Calculate dates to load (focused + nearby)
-      for (let offset = -daysToPreload; offset <= daysToPreload; offset++) {
-        const targetDate = new Date(today);
-        targetDate.setDate(
-          today.getDate() + (focusedIndex - daysBefore + offset)
-        );
-        const dateString = formatDate(targetDate);
-        datesToLoad.push(dateString);
+      // Only fetch if we don't already have it
+      if (!tasksCacheRef.current[dateString]) {
+        console.log("🔍 Loading tasks for focused card:", dateString);
+        await fetchTasksForDate(dateString);
       }
-
-      console.log(
-        "🔍 Loading tasks for focused card and nearby dates:",
-        datesToLoad
-      );
-
-      // Fetch all dates in parallel (but respect rate limits)
-      const fetchPromises = datesToLoad.map((dateString) =>
-        fetchTasksForDate(dateString)
-      );
-      await Promise.all(fetchPromises);
     };
 
-    loadTasksForFocusedAndNearby();
+    loadTasksForFocused();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedIndex]); // Re-fetch when focused card changes
 
-  // Initial load: Fetch tasks for a date range (last 30 days + next 30 days)
+  // Initial load: Fetch tasks only for the 10 visible cards (sequentially to avoid quota)
   useEffect(() => {
     const loadInitialTasks = async () => {
-      const daysToLoad = 30; // Load 30 days before and after today
       const datesToLoad: string[] = [];
 
-      for (let offset = -daysToLoad; offset <= daysToLoad; offset++) {
+      // Only load tasks for the 10 cards we're showing
+      for (
+        let offset = -daysBefore;
+        offset < totalDays - daysBefore;
+        offset++
+      ) {
         const targetDate = new Date(today);
         targetDate.setDate(today.getDate() + offset);
         const dateString = formatDate(targetDate);
@@ -162,20 +212,16 @@ export default function Home() {
       }
 
       console.log(
-        "🚀 Initial load: Fetching tasks for date range:",
+        "🚀 Initial load: Fetching tasks for",
         datesToLoad.length,
-        "dates"
+        "dates (visible cards only, sequential to avoid quota)"
       );
 
-      // Fetch in batches to avoid overwhelming the API
-      const batchSize = 10;
-      for (let i = 0; i < datesToLoad.length; i += batchSize) {
-        const batch = datesToLoad.slice(i, i + batchSize);
-        await Promise.all(
-          batch.map((dateString) => fetchTasksForDate(dateString))
-        );
-        // Small delay between batches to be nice to the API
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      // Fetch sequentially with delays to avoid hitting quota
+      for (const dateString of datesToLoad) {
+        await fetchTasksForDate(dateString);
+        // Small delay between requests
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
 
       console.log(
