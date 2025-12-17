@@ -218,12 +218,6 @@ export function TodoCard({
           <span className="text-xs text-gray-700">{day}</span>
         </div>
 
-        <div>
-          <h1 className="py-2 font-medium text-base text-gray-700">
-            What did you do today?
-          </h1>
-        </div>
-
         {/* Task List */}
         <div className="space-y-0">
           {allItems.map((item, index) => {
@@ -250,7 +244,7 @@ export function TodoCard({
                     <input
                       type="text"
                       placeholder=""
-                      className="text-base font-mono text-gray-700 flex-1 bg-transparent border-none outline-none focus:outline-none placeholder:text-gray-300"
+                      className="text-base font-sans text-gray-700 flex-1 bg-transparent border-none outline-none focus:outline-none placeholder:text-gray-300"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && e.currentTarget.value.trim()) {
                           addTask(e.currentTarget.value, index);
