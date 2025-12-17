@@ -113,7 +113,7 @@ export function TodoCard({
   }, [initialTasks, date]);
 
   // Calculate empty slots to always have 11 rows total (cap tasks at 11 if more exist)
-  const totalRows = 11;
+  const totalRows = 9;
   const displayedTasks = tasks.slice(0, totalRows);
   const calculatedEmptySlots =
     emptySlots !== undefined
@@ -203,18 +203,25 @@ export function TodoCard({
   return (
     <Card
       className={cn(
-        "min-w-[400px] h-full shadow-lg bg-white",
-        focused && "border-2",
+        "min-w-[400px] h-full shadow-lg bg-white transition-all ease-in-out duration-200",
+        focused && "border-[1.5px]",
         focused && "border-[#4728F5]",
-        !focused && "border border-gray-200",
+        !focused && "border border-gray-300 scale-95",
         className
       )}
     >
-      <CardContent className="p-6">
+      <CardContent className="p-5 py-4">
         {/* Header */}
-        <div className="flex justify-between items-start mb-6">
-          <span className="text-base font-serif text-gray-700">{date}</span>
-          <span className="text-base font-serif text-gray-700">{day}</span>
+        <div className="flex justify-between items-start mb-4">
+          <span className="w-4 h-4 rounded-full bg-[#F2F1ED] shadow-inner border-2"></span>
+          <span className="text-xs text-gray-700">{date}</span>
+          <span className="text-xs text-gray-700">{day}</span>
+        </div>
+
+        <div>
+          <h1 className="py-2 font-medium text-base text-gray-700">
+            What did you do today?
+          </h1>
         </div>
 
         {/* Task List */}
@@ -260,7 +267,7 @@ export function TodoCard({
                   )}
                 </div>
                 {index < allItems.length - 1 && (
-                  <div className="h-px bg-gray-200" />
+                  <div className="h-px bg-gray-300" />
                 )}
               </div>
             );
