@@ -113,7 +113,7 @@ export function TodoCard({
   }, [initialTasks, date]);
 
   // Calculate empty slots to always have 11 rows total (cap tasks at 11 if more exist)
-  const totalRows = 9;
+  const totalRows = 10;
   const displayedTasks = tasks.slice(0, totalRows);
   const calculatedEmptySlots =
     emptySlots !== undefined
