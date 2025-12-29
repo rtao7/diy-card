@@ -14,6 +14,7 @@ import {
   Rotate3DIcon,
   RotateCcw,
   SwitchCameraIcon,
+  Check,
 } from "lucide-react";
 
 function formatDate(date: Date): string {
@@ -35,11 +36,16 @@ function getDayName(date: Date): string {
 
 // Removed hardcoded tasks - now fetching from Google Sheets via API
 
+export type CardStyle = "line" | "textarea";
+
 export default function Home() {
   const today = new Date();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [focusedIndex, setFocusedIndex] = useState(5); // Start with today's card (index 5 in 10-card array)
+  const [cardStyles, setCardStyles] = useState<Record<string, CardStyle>>({});
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
+  const styleMenuRef = useRef<HTMLDivElement>(null);
 
   // Store tasks for each date (so we don't fetch multiple times)
   const [tasksCache, setTasksCache] = useState<
@@ -293,6 +299,33 @@ export default function Home() {
     }
   }, []);
 
+  // Close style menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        styleMenuRef.current &&
+        !styleMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowStyleMenu(false);
+      }
+    };
+
+    if (showStyleMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showStyleMenu]);
+
+  // Get the focused card's style for the menu
+  const focusedCard = cards[focusedIndex];
+  const focusedCardDate = focusedCard?.formattedDate;
+  const currentFocusedStyle = focusedCardDate
+    ? cardStyles[focusedCardDate] || "line"
+    : "line";
+
   return (
     <div className="flex flex-col h-screen font-mono bg-gradient-to-b from-[#f5f3f0] to-[#d4d8d6] overflow-hidden">
       <Header />
@@ -329,6 +362,7 @@ export default function Home() {
                   tasks={cardTasks} // Show tasks on all cards
                   faded={!isFocused}
                   focused={isFocused}
+                  cardStyle={cardStyles[card.formattedDate] || "line"}
                 />
               </div>
             );
@@ -340,10 +374,56 @@ export default function Home() {
           <LucideFlipHorizontal size={20} />
           Flip
         </Button>
-        <Button variant="outline" className="text-lg gap-2">
-          <SwitchCameraIcon size={20} />
-          Change Card
-        </Button>
+        <div className="relative" ref={styleMenuRef}>
+          <Button
+            variant="outline"
+            className="text-lg gap-2"
+            onClick={() => setShowStyleMenu(!showStyleMenu)}
+          >
+            <SwitchCameraIcon size={20} />
+            Change Card
+          </Button>
+          {showStyleMenu && (
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 bg-white border border-gray-300 rounded-md shadow-lg z-50">
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    if (focusedCardDate) {
+                      setCardStyles((prev) => ({
+                        ...prev,
+                        [focusedCardDate]: "line",
+                      }));
+                    }
+                    setShowStyleMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center justify-between"
+                >
+                  <span className="text-base">Line Style</span>
+                  {currentFocusedStyle === "line" && (
+                    <Check size={18} className="text-[#4728F5]" />
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    if (focusedCardDate) {
+                      setCardStyles((prev) => ({
+                        ...prev,
+                        [focusedCardDate]: "textarea",
+                      }));
+                    }
+                    setShowStyleMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center justify-between"
+                >
+                  <span className="text-base">Text Area</span>
+                  {currentFocusedStyle === "textarea" && (
+                    <Check size={18} className="text-[#4728F5]" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
