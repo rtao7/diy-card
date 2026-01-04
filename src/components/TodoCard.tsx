@@ -117,7 +117,6 @@ export const TodoCard = memo(function TodoCard({
   // React Query mutations
   const createMutation = useCreateTaskMutation();
   const updateMutation = useUpdateTaskMutation();
-  const deleteMutation = useDeleteTaskMutation();
 
   // Update tasks when initialTasks prop changes (when new data is fetched from API)
   useEffect(() => {
@@ -309,28 +308,31 @@ export const TodoCard = memo(function TodoCard({
       const task = tasks.find((t) => t.id === taskId);
       if (!task) return;
 
-      // Optimistically remove from UI
+      // Optimistically remove from UI (mark as complete, which will hide it)
       setTasks((prevTasks) => prevTasks.filter((t) => t.id !== taskId));
 
-      // Delete from backend using React Query mutation
-      deleteMutation.mutate(taskId, {
-        onSuccess: () => {
-          toast.success("Task deleted successfully");
-        },
-        onError: (error) => {
-          // Revert on error
-          setTasks((prevTasks) => {
-            const newTasks = [...prevTasks];
-            const insertIndex = tasks.findIndex((t) => t.id === taskId);
-            newTasks.splice(insertIndex, 0, task);
-            return newTasks;
-          });
-          toast.error("Failed to delete task. Please try again.");
-          console.error("Error deleting task:", error);
-        },
-      });
+      // Mark as complete instead of deleting - task stays in spreadsheet but hidden from UI
+      updateMutation.mutate(
+        { taskId, updates: { completed: true } },
+        {
+          onSuccess: () => {
+            toast.success("Task marked as complete");
+          },
+          onError: (error) => {
+            // Revert on error
+            setTasks((prevTasks) => {
+              const newTasks = [...prevTasks];
+              const insertIndex = tasks.findIndex((t) => t.id === taskId);
+              newTasks.splice(insertIndex, 0, task);
+              return newTasks;
+            });
+            toast.error("Failed to mark task as complete. Please try again.");
+            console.error("Error marking task as complete:", error);
+          },
+        }
+      );
     },
-    [tasks]
+    [tasks, updateMutation]
   );
 
   // Handle textarea changes for textarea style

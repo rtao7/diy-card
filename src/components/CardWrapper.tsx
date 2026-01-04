@@ -28,6 +28,7 @@ export function CardWrapper({
     return <CardSkeleton />;
   }
 
+  // Show all tasks, including completed ones (they'll be displayed with strikethrough)
   return (
     <TodoCard
       date={date}

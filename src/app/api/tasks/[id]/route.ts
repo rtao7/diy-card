@@ -13,7 +13,7 @@ import { requireApiKey } from "@/lib/auth";
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check API key authentication
@@ -29,7 +29,7 @@ export async function PATCH(
       );
     }
 
-    const taskId = params.id;
+    const { id: taskId } = await params;
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
@@ -167,7 +167,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check API key authentication
@@ -183,7 +183,7 @@ export async function DELETE(
       );
     }
 
-    const taskId = params.id;
+    const { id: taskId } = await params;
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },

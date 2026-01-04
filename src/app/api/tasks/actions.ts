@@ -219,6 +219,8 @@ export async function deleteTaskAction(taskId: string) {
     // Delete the row
     const actualRowNumber = taskRowIndex + 2;
 
+    console.log(`🗑️ Deleting task ${taskId} from row ${actualRowNumber} in sheet ${sheetName}`);
+
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -228,7 +230,7 @@ export async function deleteTaskAction(taskId: string) {
               range: {
                 sheetId,
                 dimension: "ROWS",
-                startIndex: actualRowNumber - 1,
+                startIndex: actualRowNumber - 1, // 0-indexed
                 endIndex: actualRowNumber,
               },
             },
@@ -236,6 +238,8 @@ export async function deleteTaskAction(taskId: string) {
         ],
       },
     });
+
+    console.log(`✅ Successfully deleted task ${taskId} from Google Sheets`);
 
     return {
       success: true,
