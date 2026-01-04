@@ -84,6 +84,7 @@ export async function getTasksForDate(date: string): Promise<Task[]> {
 
 /**
  * Creates a new task
+ * Uses server action to avoid exposing API key client-side
  *
  * @param text - The task text
  * @param date - Date in format "M/D/YYYY" (e.g., "12/25/2024")
@@ -96,35 +97,55 @@ export async function createTask(
   completed: boolean = false
 ): Promise<Task> {
   try {
-    // Get API key from environment variable (NEXT_PUBLIC_API_KEY for client-side)
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY;
-
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-
-    // Add API key to headers if available
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
-
-    const response = await fetch("/api/tasks", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ text, date, completed }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.error || `Failed to create task: ${response.statusText}`
-      );
-    }
-
-    const data = await response.json();
-    return data.task;
+    // Use server action instead of direct API call to avoid exposing API key
+    const { createTaskAction } = await import("@/app/api/tasks/actions");
+    const result = await createTaskAction(text, date, completed);
+    return result.task;
   } catch (error) {
     console.error("Error creating task:", error);
+    throw error;
+  }
+}
+
+/**
+ * Updates a task
+ *
+ * @param taskId - The task ID
+ * @param updates - Object with fields to update (text, completed, date)
+ * @returns The updated task
+ */
+export async function updateTask(
+  taskId: string,
+  updates: {
+    text?: string;
+    completed?: boolean;
+    date?: string;
+  }
+): Promise<Task> {
+  try {
+    // Use server action instead of direct API call
+    const { updateTaskAction } = await import("@/app/api/tasks/actions");
+    const result = await updateTaskAction(taskId, updates);
+    return result.task;
+  } catch (error) {
+    console.error("Error updating task:", error);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a task
+ *
+ * @param taskId - The task ID
+ * @returns Success message
+ */
+export async function deleteTask(taskId: string): Promise<void> {
+  try {
+    // Use server action instead of direct API call
+    const { deleteTaskAction } = await import("@/app/api/tasks/actions");
+    await deleteTaskAction(taskId);
+  } catch (error) {
+    console.error("Error deleting task:", error);
     throw error;
   }
 }

@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { createTask } from "@/lib/tasks";
+import {
+  useCreateTaskMutation,
+  useUpdateTaskMutation,
+  useDeleteTaskMutation,
+} from "@/hooks/useTasksQuery";
 import { CardStyle } from "@/app/page";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 
 interface Task {
   id: string;
@@ -92,7 +98,7 @@ const DiamondIcon = ({
   );
 };
 
-export function TodoCard({
+export const TodoCard = memo(function TodoCard({
   date,
   day,
   tasks: initialTasks,
@@ -105,6 +111,13 @@ export function TodoCard({
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [textareaValue, setTextareaValue] = useState<string>("");
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+
+  // React Query mutations
+  const createMutation = useCreateTaskMutation();
+  const updateMutation = useUpdateTaskMutation();
+  const deleteMutation = useDeleteTaskMutation();
 
   // Update tasks when initialTasks prop changes (when new data is fetched from API)
   useEffect(() => {
@@ -135,13 +148,46 @@ export function TodoCard({
       ? emptySlots
       : Math.max(0, totalRows - displayedTasks.length);
 
-  const toggleTask = useCallback((taskId: string) => {
-    setTasks((prevTasks) =>
-      prevTasks.map((task) =>
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
-    );
-  }, []);
+  const toggleTask = useCallback(
+    async (taskId: string) => {
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) return;
+
+      const newCompleted = !task.completed;
+
+      // Optimistically update UI
+      setTasks((prevTasks) =>
+        prevTasks.map((t) =>
+          t.id === taskId ? { ...t, completed: newCompleted } : t
+        )
+      );
+
+      // Save to backend using React Query mutation
+      updateMutation.mutate(
+        { taskId, updates: { completed: newCompleted } },
+        {
+          onSuccess: () => {
+            toast.success(
+              newCompleted
+                ? "Task marked as complete"
+                : "Task marked as incomplete"
+            );
+          },
+          onError: (error) => {
+            // Revert on error
+            setTasks((prevTasks) =>
+              prevTasks.map((t) =>
+                t.id === taskId ? { ...t, completed: !newCompleted } : t
+              )
+            );
+            toast.error("Failed to update task. Please try again.");
+            console.error("Error toggling task:", error);
+          },
+        }
+      );
+    },
+    [tasks, updateMutation]
+  );
 
   const addTask = useCallback(
     async (text: string, insertIndex: number) => {
@@ -167,42 +213,125 @@ export function TodoCard({
         return newTasks;
       });
 
-      // Save to spreadsheet via API
-      try {
-        const createdTask = await createTask(trimmedText, date, false);
+      // Save to spreadsheet via React Query mutation
+      createMutation.mutate(
+        { text: trimmedText, date, completed: false },
+        {
+          onSuccess: (createdTask) => {
+            // Replace the temporary task with the real one from the server
+            setTasks((prevTasks) =>
+              prevTasks.map((task) =>
+                task.id === tempId
+                  ? {
+                      id: createdTask.id,
+                      text: createdTask.text,
+                      completed: createdTask.completed,
+                    }
+                  : task
+              )
+            );
+            toast.success("Task created successfully");
+          },
+          onError: (error) => {
+            console.error("❌ Failed to save task to spreadsheet:", error);
 
-        // Replace the temporary task with the real one from the server
-        setTasks((prevTasks) =>
-          prevTasks.map((task) =>
-            task.id === tempId
-              ? {
-                  id: createdTask.id,
-                  text: createdTask.text,
-                  completed: createdTask.completed,
-                }
-              : task
-          )
-        );
+            // Remove the optimistic task on error
+            setTasks((prevTasks) =>
+              prevTasks.filter((task) => task.id !== tempId)
+            );
 
-        console.log("✅ Task saved to spreadsheet:", createdTask);
-      } catch (error) {
-        console.error("❌ Failed to save task to spreadsheet:", error);
-
-        // Remove the optimistic task on error
-        setTasks((prevTasks) => prevTasks.filter((task) => task.id !== tempId));
-
-        // You could show an error toast here if you have a toast system
-        alert("Failed to save task. Please try again.");
-      }
+            toast.error("Failed to save task. Please try again.");
+          },
+        }
+      );
     },
     [date]
   );
 
-  const updateTaskText = useCallback((taskId: string, text: string) => {
-    setTasks((prevTasks) =>
-      prevTasks.map((task) => (task.id === taskId ? { ...task, text } : task))
-    );
+  const startEditing = useCallback((taskId: string, currentText: string) => {
+    setEditingTaskId(taskId);
+    setEditingText(currentText);
   }, []);
+
+  const cancelEditing = useCallback(() => {
+    setEditingTaskId(null);
+    setEditingText("");
+  }, []);
+
+  const saveTaskEdit = useCallback(
+    async (taskId: string) => {
+      const trimmedText = editingText.trim();
+      if (!trimmedText) {
+        toast.error("Task text cannot be empty");
+        return;
+      }
+
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) return;
+
+      // If text hasn't changed, just cancel editing
+      if (trimmedText === task.text) {
+        cancelEditing();
+        return;
+      }
+
+      // Optimistically update UI
+      setTasks((prevTasks) =>
+        prevTasks.map((t) => (t.id === taskId ? { ...t, text: trimmedText } : t))
+      );
+      cancelEditing();
+
+      // Save to backend using React Query mutation
+      updateMutation.mutate(
+        { taskId, updates: { text: trimmedText } },
+        {
+          onSuccess: () => {
+            toast.success("Task updated successfully");
+          },
+          onError: (error) => {
+            // Revert on error
+            setTasks((prevTasks) =>
+              prevTasks.map((t) =>
+                t.id === taskId ? { ...t, text: task.text } : t
+              )
+            );
+            toast.error("Failed to update task. Please try again.");
+            console.error("Error updating task:", error);
+          },
+        }
+      );
+    },
+    [editingText, tasks, cancelEditing]
+  );
+
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) return;
+
+      // Optimistically remove from UI
+      setTasks((prevTasks) => prevTasks.filter((t) => t.id !== taskId));
+
+      // Delete from backend using React Query mutation
+      deleteMutation.mutate(taskId, {
+        onSuccess: () => {
+          toast.success("Task deleted successfully");
+        },
+        onError: (error) => {
+          // Revert on error
+          setTasks((prevTasks) => {
+            const newTasks = [...prevTasks];
+            const insertIndex = tasks.findIndex((t) => t.id === taskId);
+            newTasks.splice(insertIndex, 0, task);
+            return newTasks;
+          });
+          toast.error("Failed to delete task. Please try again.");
+          console.error("Error deleting task:", error);
+        },
+      });
+    },
+    [tasks]
+  );
 
   // Handle textarea changes for textarea style
   const handleTextareaChange = useCallback((value: string) => {
@@ -214,7 +343,7 @@ export function TodoCard({
     setIsTextareaFocused(false);
     const lines = textareaValue.split("\n").filter((line) => line.trim());
     const newTasks: Task[] = [];
-    const taskTextsInTextarea = new Set<string>();
+    const promises: Promise<void>[] = [];
 
     // Process each line in the textarea
     for (const line of lines) {
@@ -228,37 +357,68 @@ export function TodoCard({
         : trimmedLine;
 
       if (!taskText) continue;
-      taskTextsInTextarea.add(taskText);
 
       // Check if this task already exists
       const existingTask = tasks.find((t) => t.text === taskText);
       if (existingTask) {
-        // Update completion status if changed, otherwise keep existing
+        // Update completion status if changed
         if (existingTask.completed !== isCompleted) {
-          newTasks.push({ ...existingTask, completed: isCompleted });
+          promises.push(
+            new Promise<void>((resolve) => {
+              updateMutation.mutate(
+                { taskId: existingTask.id, updates: { completed: isCompleted } },
+                {
+                  onSuccess: () => {
+                    newTasks.push({ ...existingTask, completed: isCompleted });
+                    resolve();
+                  },
+                  onError: (error) => {
+                    console.error("❌ Failed to update task:", error);
+                    toast.error("Failed to update task completion");
+                    newTasks.push(existingTask); // Keep original
+                    resolve();
+                  },
+                }
+              );
+            })
+          );
         } else {
           newTasks.push(existingTask);
         }
       } else {
         // Create new task
-        try {
-          const createdTask = await createTask(taskText, date, isCompleted);
-          newTasks.push(createdTask);
-        } catch (error) {
-          console.error("❌ Failed to save task:", error);
-          // Add as temporary task anyway
-          newTasks.push({
-            id: `temp-${Date.now()}-${Math.random()}`,
-            text: taskText,
-            completed: isCompleted,
-          });
-        }
+        promises.push(
+          new Promise<void>((resolve) => {
+            createMutation.mutate(
+              { text: taskText, date, completed: isCompleted },
+              {
+                onSuccess: (createdTask) => {
+                  newTasks.push(createdTask);
+                  resolve();
+                },
+                onError: (error) => {
+                  console.error("❌ Failed to save task:", error);
+                  // Add as temporary task anyway
+                  newTasks.push({
+                    id: `temp-${Date.now()}-${Math.random()}`,
+                    text: taskText,
+                    completed: isCompleted,
+                  });
+                  resolve();
+                },
+              }
+            );
+          })
+        );
       }
     }
 
+    // Wait for all mutations to complete
+    await Promise.all(promises);
+
     // Update tasks - only keep tasks that are in the textarea
     setTasks(newTasks);
-  }, [textareaValue, tasks, date]);
+  }, [textareaValue, tasks, date, updateMutation, createMutation]);
 
   // Create all items: existing tasks + empty slots (always 11 rows total)
   const allItems: (Task | { id: string; isEmpty: true })[] = [
@@ -304,14 +464,44 @@ export function TodoCard({
                       onClick={() => task && toggleTask(task.id)}
                     />
                     {isTask && task ? (
-                      <span
-                        className={cn(
-                          "text-base font-mono text-gray-700 flex-1",
-                          task.completed && "line-through text-gray-400"
+                      <div className="flex items-center gap-2 flex-1 group">
+                        {editingTaskId === task.id ? (
+                          <input
+                            type="text"
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveTaskEdit(task.id);
+                              } else if (e.key === "Escape") {
+                                cancelEditing();
+                              }
+                            }}
+                            onBlur={() => saveTaskEdit(task.id)}
+                            autoFocus
+                            className="text-base font-mono text-gray-700 flex-1 bg-transparent border-b-2 border-[#4728F5] outline-none focus:outline-none"
+                          />
+                        ) : (
+                          <>
+                            <span
+                              onDoubleClick={() => startEditing(task.id, task.text)}
+                              className={cn(
+                                "text-base font-mono text-gray-700 flex-1 cursor-text",
+                                task.completed && "line-through text-gray-400"
+                              )}
+                            >
+                              {task.text}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-100 rounded"
+                              aria-label="Delete task"
+                            >
+                              <Trash2 size={14} className="text-gray-400 hover:text-red-500" />
+                            </button>
+                          </>
                         )}
-                      >
-                        {task.text}
-                      </span>
+                      </div>
                     ) : (
                       <input
                         type="text"
@@ -358,4 +548,4 @@ export function TodoCard({
       </CardContent>
     </Card>
   );
-}
+});
