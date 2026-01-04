@@ -9,6 +9,7 @@ export interface Task {
   completed: boolean;
   date?: string;
   created_at?: string;
+  timeSpent?: string | number;
 }
 
 /**
@@ -94,12 +95,13 @@ export async function getTasksForDate(date: string): Promise<Task[]> {
 export async function createTask(
   text: string,
   date: string,
-  completed: boolean = false
+  completed: boolean = false,
+  timeSpent?: string | number
 ): Promise<Task> {
   try {
     // Use server action instead of direct API call to avoid exposing API key
     const { createTaskAction } = await import("@/app/api/tasks/actions");
-    const result = await createTaskAction(text, date, completed);
+    const result = await createTaskAction(text, date, completed, timeSpent);
     return result.task;
   } catch (error) {
     console.error("Error creating task:", error);
@@ -120,6 +122,7 @@ export async function updateTask(
     text?: string;
     completed?: boolean;
     date?: string;
+    timeSpent?: string | number;
   }
 ): Promise<Task> {
   try {

@@ -7,7 +7,7 @@ import { requireApiKey } from "@/lib/auth";
  *
  * Usage: PATCH /api/tasks/[id]
  * Headers: Authorization: Bearer YOUR_API_KEY (or X-API-Key: YOUR_API_KEY)
- * Body: { text?: string, completed?: boolean, date?: string }
+ * Body: { text?: string, completed?: boolean, date?: string, timeSpent?: string | number }
  *
  * This requires API key authentication
  */
@@ -39,13 +39,19 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { text, completed, date } = body;
+    const { text, completed, date, timeSpent } = body;
 
     // Validate that at least one field is being updated
-    if (text === undefined && completed === undefined && date === undefined) {
+    if (
+      text === undefined &&
+      completed === undefined &&
+      date === undefined &&
+      timeSpent === undefined
+    ) {
       return NextResponse.json(
         {
-          error: "At least one field (text, completed, or date) must be provided for update",
+          error:
+            "At least one field (text, completed, date, or timeSpent) must be provided for update",
         },
         { status: 400 }
       );
@@ -80,7 +86,7 @@ export async function PATCH(
     }
 
     // Read all rows to find the task
-    const range = `${sheetName}!A2:E1000`;
+    const range = `${sheetName}!A2:F1000`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
@@ -90,10 +96,7 @@ export async function PATCH(
     const taskRowIndex = rows.findIndex((row) => row[0] === taskId);
 
     if (taskRowIndex === -1) {
-      return NextResponse.json(
-        { error: "Task not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     // Get the current row (row index + 2 because we start from row 2, and arrays are 0-indexed)
@@ -103,8 +106,7 @@ export async function PATCH(
     // Prepare updated values
     const updatedId = currentRow[0] || "";
     const updatedDate = date !== undefined ? date : currentRow[1] || "";
-    const updatedText =
-      text !== undefined ? text.trim() : currentRow[2] || "";
+    const updatedText = text !== undefined ? text.trim() : currentRow[2] || "";
     const updatedCompleted =
       completed !== undefined
         ? completed === true
@@ -112,9 +114,11 @@ export async function PATCH(
           : "false"
         : currentRow[3] || "false";
     const updatedCreatedAt = currentRow[4] || new Date().toISOString();
+    const updatedTimeSpent =
+      timeSpent !== undefined ? String(timeSpent) : currentRow[5] || "";
 
     // Update the row in Google Sheets
-    const updateRange = `${sheetName}!A${actualRowNumber}:E${actualRowNumber}`;
+    const updateRange = `${sheetName}!A${actualRowNumber}:F${actualRowNumber}`;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: updateRange,
@@ -127,6 +131,7 @@ export async function PATCH(
             updatedText,
             updatedCompleted,
             updatedCreatedAt,
+            updatedTimeSpent,
           ],
         ],
       },
@@ -139,6 +144,7 @@ export async function PATCH(
       text: updatedText,
       completed: updatedCompleted === "true",
       created_at: updatedCreatedAt,
+      timeSpent: updatedTimeSpent,
     };
 
     return NextResponse.json({
@@ -220,7 +226,7 @@ export async function DELETE(
     }
 
     // Read all rows to find the task
-    const range = `${sheetName}!A2:E1000`;
+    const range = `${sheetName}!A2:F1000`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
@@ -230,10 +236,7 @@ export async function DELETE(
     const taskRowIndex = rows.findIndex((row) => row[0] === taskId);
 
     if (taskRowIndex === -1) {
-      return NextResponse.json(
-        { error: "Task not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     // Get sheet ID from spreadsheet metadata
@@ -246,10 +249,7 @@ export async function DELETE(
     const sheetId = sheet?.properties?.sheetId;
 
     if (sheetId === undefined) {
-      return NextResponse.json(
-        { error: "Sheet not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Sheet not found" }, { status: 404 });
     }
 
     // Delete the row (row index + 2 because we start from row 2, and arrays are 0-indexed)
@@ -288,4 +288,3 @@ export async function DELETE(
     );
   }
 }
-

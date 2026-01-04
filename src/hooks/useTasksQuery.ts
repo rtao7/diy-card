@@ -8,6 +8,7 @@ interface Task {
   completed: boolean;
   date?: string;
   created_at?: string;
+  timeSpent?: string | number;
 }
 
 /**
@@ -37,11 +38,13 @@ export function useCreateTaskMutation() {
       text,
       date,
       completed,
+      timeSpent,
     }: {
       text: string;
       date: string;
       completed?: boolean;
-    }) => createTask(text, date, completed ?? false),
+      timeSpent?: string | number;
+    }) => createTask(text, date, completed ?? false, timeSpent),
     onSuccess: (task, variables) => {
       // Invalidate and refetch tasks for the date
       queryClient.invalidateQueries({ queryKey: ["tasks", variables.date] });
@@ -61,7 +64,7 @@ export function useUpdateTaskMutation() {
       updates,
     }: {
       taskId: string;
-      updates: { text?: string; completed?: boolean; date?: string };
+      updates: { text?: string; completed?: boolean; date?: string; timeSpent?: string | number };
     }) => updateTask(taskId, updates),
     onSuccess: (task) => {
       // Invalidate queries for both old and new dates

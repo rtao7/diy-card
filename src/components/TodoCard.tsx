@@ -16,6 +16,7 @@ interface Task {
   id: string;
   text: string;
   completed: boolean;
+  timeSpent?: string | number;
 }
 
 interface TodoCardProps {
@@ -113,6 +114,9 @@ export const TodoCard = memo(function TodoCard({
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>("");
+  const [timeInputValues, setTimeInputValues] = useState<
+    Record<string, string>
+  >({});
 
   // React Query mutations
   const createMutation = useCreateTaskMutation();
@@ -126,6 +130,18 @@ export const TodoCard = memo(function TodoCard({
       initialTasks,
     });
     setTasks(initialTasks);
+    // Initialize time input values from tasks
+    const timeValues: Record<string, string> = {};
+    initialTasks.forEach((task) => {
+      if (
+        task.timeSpent !== undefined &&
+        task.timeSpent !== null &&
+        task.timeSpent !== ""
+      ) {
+        timeValues[task.id] = String(task.timeSpent);
+      }
+    });
+    setTimeInputValues(timeValues);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTasks, date]);
 
@@ -200,6 +216,7 @@ export const TodoCard = memo(function TodoCard({
         id: tempId,
         text: trimmedText,
         completed: false,
+        timeSpent: "",
       };
 
       setTasks((prevTasks) => {
@@ -214,7 +231,7 @@ export const TodoCard = memo(function TodoCard({
 
       // Save to spreadsheet via React Query mutation
       createMutation.mutate(
-        { text: trimmedText, date, completed: false },
+        { text: trimmedText, date, completed: false, timeSpent: "" },
         {
           onSuccess: (createdTask) => {
             // Replace the temporary task with the real one from the server
@@ -225,6 +242,7 @@ export const TodoCard = memo(function TodoCard({
                       id: createdTask.id,
                       text: createdTask.text,
                       completed: createdTask.completed,
+                      timeSpent: createdTask.timeSpent || "",
                     }
                   : task
               )
@@ -276,7 +294,9 @@ export const TodoCard = memo(function TodoCard({
 
       // Optimistically update UI
       setTasks((prevTasks) =>
-        prevTasks.map((t) => (t.id === taskId ? { ...t, text: trimmedText } : t))
+        prevTasks.map((t) =>
+          t.id === taskId ? { ...t, text: trimmedText } : t
+        )
       );
       cancelEditing();
 
@@ -310,6 +330,12 @@ export const TodoCard = memo(function TodoCard({
 
       // Optimistically remove from UI (mark as complete, which will hide it)
       setTasks((prevTasks) => prevTasks.filter((t) => t.id !== taskId));
+      // Remove time input value
+      setTimeInputValues((prev) => {
+        const newValues = { ...prev };
+        delete newValues[taskId];
+        return newValues;
+      });
 
       // Mark as complete instead of deleting - task stays in spreadsheet but hidden from UI
       updateMutation.mutate(
@@ -328,6 +354,53 @@ export const TodoCard = memo(function TodoCard({
             });
             toast.error("Failed to mark task as complete. Please try again.");
             console.error("Error marking task as complete:", error);
+          },
+        }
+      );
+    },
+    [tasks, updateMutation]
+  );
+
+  const handleTimeChange = useCallback(
+    async (taskId: string, value: string) => {
+      // Update local state immediately
+      setTimeInputValues((prev) => ({
+        ...prev,
+        [taskId]: value,
+      }));
+
+      // Update task in state
+      setTasks((prevTasks) =>
+        prevTasks.map((t) =>
+          t.id === taskId ? { ...t, timeSpent: value || "" } : t
+        )
+      );
+
+      // Save to backend
+      const timeSpentValue = value.trim() === "" ? "" : value.trim();
+      updateMutation.mutate(
+        { taskId, updates: { timeSpent: timeSpentValue } },
+        {
+          onSuccess: () => {
+            // Silent success - no toast for time updates
+          },
+          onError: (error) => {
+            // Revert on error
+            const task = tasks.find((t) => t.id === taskId);
+            if (task) {
+              setTimeInputValues((prev) => ({
+                ...prev,
+                [taskId]: String(task.timeSpent || ""),
+              }));
+              setTasks((prevTasks) =>
+                prevTasks.map((t) =>
+                  t.id === taskId
+                    ? { ...t, timeSpent: task.timeSpent || "" }
+                    : t
+                )
+              );
+            }
+            console.error("Error updating time:", error);
           },
         }
       );
@@ -368,7 +441,10 @@ export const TodoCard = memo(function TodoCard({
           promises.push(
             new Promise<void>((resolve) => {
               updateMutation.mutate(
-                { taskId: existingTask.id, updates: { completed: isCompleted } },
+                {
+                  taskId: existingTask.id,
+                  updates: { completed: isCompleted },
+                },
                 {
                   onSuccess: () => {
                     newTasks.push({ ...existingTask, completed: isCompleted });
@@ -405,6 +481,7 @@ export const TodoCard = memo(function TodoCard({
                     id: `temp-${Date.now()}-${Math.random()}`,
                     text: taskText,
                     completed: isCompleted,
+                    timeSpent: "",
                   });
                   resolve();
                 },
@@ -486,7 +563,9 @@ export const TodoCard = memo(function TodoCard({
                         ) : (
                           <>
                             <span
-                              onDoubleClick={() => startEditing(task.id, task.text)}
+                              onDoubleClick={() =>
+                                startEditing(task.id, task.text)
+                              }
                               className={cn(
                                 "text-base font-mono text-gray-700 flex-1 cursor-text",
                                 task.completed && "line-through text-gray-400"
@@ -494,12 +573,39 @@ export const TodoCard = memo(function TodoCard({
                             >
                               {task.text}
                             </span>
+                            <input
+                              type="text"
+                              value={
+                                timeInputValues[task.id] || task.timeSpent || ""
+                              }
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setTimeInputValues((prev) => ({
+                                  ...prev,
+                                  [task.id]: value,
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                handleTimeChange(task.id, e.target.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              placeholder="0"
+                              className="w-16 text-sm font-mono text-gray-600 bg-transparent border-b border-gray-300 focus:border-[#4728F5] outline-none focus:outline-none text-center placeholder:text-gray-300"
+                              aria-label="Time spent (minutes)"
+                            />
                             <button
                               onClick={() => handleDeleteTask(task.id)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-100 rounded"
                               aria-label="Delete task"
                             >
-                              <Trash2 size={14} className="text-gray-400 hover:text-red-500" />
+                              <Trash2
+                                size={14}
+                                className="text-gray-400 hover:text-red-500"
+                              />
                             </button>
                           </>
                         )}

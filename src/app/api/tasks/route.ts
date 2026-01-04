@@ -65,10 +65,10 @@ export async function GET(request: NextRequest) {
     console.log("📄 Using sheet name:", sheetName);
 
     // Step 5: Read data from the sheet
-    // Range: Sheet1!A2:E1000 means:
+    // Range: Sheet1!A2:F1000 means:
     // - Sheet1: the sheet name (configurable via env var)
-    // - A2:E1000: columns A through E, rows 2 to 1000 (skip header row 1)
-    const range = `${sheetName}!A2:E1000`;
+    // - A2:F1000: columns A through F, rows 2 to 1000 (skip header row 1)
+    const range = `${sheetName}!A2:F1000`;
 
     let response;
     try {
@@ -134,6 +134,7 @@ export async function GET(request: NextRequest) {
     // Column C (index 2) = text
     // Column D (index 3) = completed (stored as "true" or "false" string)
     // Column E (index 4) = created_at
+    // Column F (index 5) = time_spent
     // Validate rows have minimum required columns (at least date column at index 1)
     const tasks = rows
       .filter((row) => {
@@ -146,6 +147,7 @@ export async function GET(request: NextRequest) {
         text: row[2] || "", // Column C: text
         completed: row[3] === "true", // Column D: convert "true"/"false" string to boolean
         created_at: row[4] || "", // Column E: created_at
+        timeSpent: row[5] || "", // Column F: time_spent
       }));
 
     // Step 8: Return the tasks as JSON
@@ -230,7 +232,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Parse the request body
     const body = await request.json();
-    const { text, date, completed } = body;
+    const { text, date, completed, timeSpent } = body;
 
     // Step 2: Validate required fields
     if (!text || !date) {
@@ -276,14 +278,15 @@ export async function POST(request: NextRequest) {
     const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const created_at = new Date().toISOString();
     const completedValue = completed === true ? "true" : "false";
+    const timeSpentValue = timeSpent !== undefined ? String(timeSpent) : "";
 
     // Step 6: Prepare the new row data
-    // Format: [id, date, text, completed, created_at]
-    const newRow = [id, date, text.trim(), completedValue, created_at];
+    // Format: [id, date, text, completed, created_at, time_spent]
+    const newRow = [id, date, text.trim(), completedValue, created_at, timeSpentValue];
 
     // Step 7: Append the new row to the sheet
-    // Range: Sheet1!A:E means append to columns A through E
-    const range = `${sheetName}!A:E`;
+    // Range: Sheet1!A:F means append to columns A through F
+    const range = `${sheetName}!A:F`;
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
@@ -301,6 +304,7 @@ export async function POST(request: NextRequest) {
       text: text.trim(),
       completed: completed === true,
       created_at,
+      timeSpent: timeSpentValue,
     };
 
     return NextResponse.json(

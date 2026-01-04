@@ -9,7 +9,8 @@ import { getGoogleSheetsClient } from "@/lib/googleSheets";
 export async function createTaskAction(
   text: string,
   date: string,
-  completed: boolean = false
+  completed: boolean = false,
+  timeSpent?: string | number
 ) {
   try {
     // Validate input
@@ -36,12 +37,20 @@ export async function createTaskAction(
     const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const created_at = new Date().toISOString();
     const completedValue = completed === true ? "true" : "false";
+    const timeSpentValue = timeSpent !== undefined ? String(timeSpent) : "";
 
     // Prepare the new row data
-    const newRow = [id, date, text.trim(), completedValue, created_at];
+    const newRow = [
+      id,
+      date,
+      text.trim(),
+      completedValue,
+      created_at,
+      timeSpentValue,
+    ];
 
     // Append the new row to the sheet
-    const range = `${sheetName}!A:E`;
+    const range = `${sheetName}!A:F`;
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
@@ -60,6 +69,7 @@ export async function createTaskAction(
         text: text.trim(),
         completed,
         created_at,
+        timeSpent: timeSpentValue,
       },
     };
   } catch (error) {
@@ -77,6 +87,7 @@ export async function updateTaskAction(
     text?: string;
     completed?: boolean;
     date?: string;
+    timeSpent?: string | number;
   }
 ) {
   try {
@@ -100,7 +111,7 @@ export async function updateTaskAction(
     }
 
     // Read all rows to find the task
-    const range = `${sheetName}!A2:E1000`;
+    const range = `${sheetName}!A2:F1000`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
@@ -119,7 +130,8 @@ export async function updateTaskAction(
 
     // Prepare updated values
     const updatedId = currentRow[0] || "";
-    const updatedDate = updates.date !== undefined ? updates.date : currentRow[1] || "";
+    const updatedDate =
+      updates.date !== undefined ? updates.date : currentRow[1] || "";
     const updatedText =
       updates.text !== undefined ? updates.text.trim() : currentRow[2] || "";
     const updatedCompleted =
@@ -129,9 +141,13 @@ export async function updateTaskAction(
           : "false"
         : currentRow[3] || "false";
     const updatedCreatedAt = currentRow[4] || new Date().toISOString();
+    const updatedTimeSpent =
+      updates.timeSpent !== undefined
+        ? String(updates.timeSpent)
+        : currentRow[5] || "";
 
     // Update the row in Google Sheets
-    const updateRange = `${sheetName}!A${actualRowNumber}:E${actualRowNumber}`;
+    const updateRange = `${sheetName}!A${actualRowNumber}:F${actualRowNumber}`;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: updateRange,
@@ -144,6 +160,7 @@ export async function updateTaskAction(
             updatedText,
             updatedCompleted,
             updatedCreatedAt,
+            updatedTimeSpent,
           ],
         ],
       },
@@ -157,6 +174,7 @@ export async function updateTaskAction(
         text: updatedText,
         completed: updatedCompleted === "true",
         created_at: updatedCreatedAt,
+        timeSpent: updatedTimeSpent,
       },
     };
   } catch (error) {
@@ -190,7 +208,7 @@ export async function deleteTaskAction(taskId: string) {
     }
 
     // Read all rows to find the task
-    const range = `${sheetName}!A2:E1000`;
+    const range = `${sheetName}!A2:F1000`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
@@ -219,7 +237,9 @@ export async function deleteTaskAction(taskId: string) {
     // Delete the row
     const actualRowNumber = taskRowIndex + 2;
 
-    console.log(`🗑️ Deleting task ${taskId} from row ${actualRowNumber} in sheet ${sheetName}`);
+    console.log(
+      `🗑️ Deleting task ${taskId} from row ${actualRowNumber} in sheet ${sheetName}`
+    );
 
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -250,4 +270,3 @@ export async function deleteTaskAction(taskId: string) {
     throw error;
   }
 }
-
