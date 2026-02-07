@@ -3,14 +3,7 @@
  * This file provides functions to call your API endpoints
  */
 
-export interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  date?: string;
-  created_at?: string;
-  timeSpent?: string | number;
-}
+import { Task } from "./types";
 
 /**
  * Fetches tasks for a specific date from Google Sheets
@@ -30,7 +23,7 @@ export async function getTasksForDate(date: string): Promise<Task[]> {
     } catch (parseError) {
       // If response is not JSON, throw with status text
       throw new Error(
-        `Failed to fetch tasks: ${response.status} ${response.statusText}`
+        `Failed to fetch tasks: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -96,7 +89,7 @@ export async function createTask(
   text: string,
   date: string,
   completed: boolean = false,
-  timeSpent?: string | number
+  timeSpent?: string | number,
 ): Promise<Task> {
   try {
     // Use server action instead of direct API call to avoid exposing API key
@@ -123,7 +116,7 @@ export async function updateTask(
     completed?: boolean;
     date?: string;
     timeSpent?: string | number;
-  }
+  },
 ): Promise<Task> {
   try {
     // Use server action instead of direct API call

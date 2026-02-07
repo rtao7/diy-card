@@ -13,10 +13,14 @@ import { NextRequest } from "next/server";
 export function validateApiKey(request: NextRequest): boolean {
   const apiKey = process.env.API_KEY;
 
-  // If no API key is configured, allow all requests (for development)
+  // In production, API key is required
   if (!apiKey) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("API_KEY must be configured in production");
+    }
+    // In development, log warning but allow requests for easier local development
     console.warn(
-      "⚠️ API_KEY not set - allowing all write requests. Set API_KEY in production!"
+      "⚠️ Development mode: API_KEY not set - allowing all write requests",
     );
     return true;
   }

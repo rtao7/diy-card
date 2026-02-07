@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleSheetsClient } from "@/lib/googleSheets";
 import { requireApiKey } from "@/lib/auth";
+import { UpdateTaskSchema, validateTaskData } from "@/lib/validation";
 
 /**
  * PATCH handler - Updates a task
@@ -13,7 +14,7 @@ import { requireApiKey } from "@/lib/auth";
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     // Check API key authentication
@@ -25,7 +26,7 @@ export async function PATCH(
           message: authError.message,
           hint: authError.hint,
         },
-        { status: authError.status }
+        { status: authError.status },
       );
     }
 
@@ -33,13 +34,25 @@ export async function PATCH(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Parse request body
+    // Parse and validate request body
     const body = await request.json();
-    const { text, completed, date, timeSpent } = body;
+    const validation = validateTaskData(UpdateTaskSchema, body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Validation failed",
+          details: validation.error,
+        },
+        { status: 400 },
+      );
+    }
+
+    const { text, completed, date, timeSpent } = validation.data;
 
     // Validate that at least one field is being updated
     if (
@@ -53,7 +66,7 @@ export async function PATCH(
           error:
             "At least one field (text, completed, date, or timeSpent) must be provided for update",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -71,7 +84,7 @@ export async function PATCH(
               ? authError.message
               : "Unknown authentication error",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -81,7 +94,7 @@ export async function PATCH(
     if (!spreadsheetId) {
       return NextResponse.json(
         { error: "Spreadsheet ID not configured" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -158,7 +171,7 @@ export async function PATCH(
         error: "Failed to update task",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -173,7 +186,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     // Check API key authentication
@@ -185,7 +198,7 @@ export async function DELETE(
           message: authError.message,
           hint: authError.hint,
         },
-        { status: authError.status }
+        { status: authError.status },
       );
     }
 
@@ -193,7 +206,7 @@ export async function DELETE(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -211,7 +224,7 @@ export async function DELETE(
               ? authError.message
               : "Unknown authentication error",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -221,7 +234,7 @@ export async function DELETE(
     if (!spreadsheetId) {
       return NextResponse.json(
         { error: "Spreadsheet ID not configured" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -244,7 +257,7 @@ export async function DELETE(
       spreadsheetId,
     });
     const sheet = spreadsheet.data.sheets?.find(
-      (s) => s.properties?.title === sheetName
+      (s) => s.properties?.title === sheetName,
     );
     const sheetId = sheet?.properties?.sheetId;
 
@@ -284,7 +297,7 @@ export async function DELETE(
         error: "Failed to delete task",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

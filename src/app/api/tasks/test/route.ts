@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleSheetsClient } from "@/lib/googleSheets";
+import { requireApiKey } from "@/lib/auth";
 
 /**
  * GET handler - Test endpoint to verify Google Sheets connection
@@ -7,8 +8,24 @@ import { getGoogleSheetsClient } from "@/lib/googleSheets";
  * Usage: GET /api/tasks/test
  *
  * This endpoint helps diagnose connection issues
+ * Requires API key authentication in production
  */
 export async function GET(request: NextRequest) {
+  // Require authentication in production to prevent information leakage
+  if (process.env.NODE_ENV === "production") {
+    const authError = requireApiKey(request);
+    if (authError) {
+      return NextResponse.json(
+        {
+          error: authError.error,
+          message:
+            "This diagnostic endpoint requires authentication in production",
+          hint: authError.hint,
+        },
+        { status: authError.status },
+      );
+    }
+  }
   const diagnostics: any = {
     timestamp: new Date().toISOString(),
     checks: {},
@@ -40,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     if (!hasAnyCredentials) {
       diagnostics.errors.push(
-        "No credentials found. Set one of: GOOGLE_SHEETS_CREDENTIALS_JSON, GOOGLE_SHEETS_CREDENTIALS_BASE64, or GOOGLE_SHEETS_CREDENTIALS"
+        "No credentials found. Set one of: GOOGLE_SHEETS_CREDENTIALS_JSON, GOOGLE_SHEETS_CREDENTIALS_BASE64, or GOOGLE_SHEETS_CREDENTIALS",
       );
       return NextResponse.json(diagnostics, { status: 500 });
     }
@@ -85,7 +102,7 @@ export async function GET(request: NextRequest) {
 
       // Check if the target sheet exists
       const targetSheet = spreadsheetInfo.data.sheets?.find(
-        (s: any) => s.properties?.title === sheetName
+        (s: any) => s.properties?.title === sheetName,
       );
 
       if (!targetSheet) {
@@ -94,7 +111,7 @@ export async function GET(request: NextRequest) {
             spreadsheetInfo.data.sheets
               ?.map((s: any) => s.properties?.title)
               .join(", ") || "none"
-          }`
+          }`,
         );
       }
 
@@ -125,15 +142,15 @@ export async function GET(request: NextRequest) {
 
       if (apiError?.code === 403) {
         diagnostics.errors.push(
-          "Permission denied. Make sure the spreadsheet is shared with the service account email."
+          "Permission denied. Make sure the spreadsheet is shared with the service account email.",
         );
       } else if (apiError?.code === 404) {
         diagnostics.errors.push(
-          "Spreadsheet not found. Check that GOOGLE_SHEETS_SPREADSHEET_ID is correct."
+          "Spreadsheet not found. Check that GOOGLE_SHEETS_SPREADSHEET_ID is correct.",
         );
       } else {
         diagnostics.errors.push(
-          `API error: ${apiError?.message || "Unknown error"}`
+          `API error: ${apiError?.message || "Unknown error"}`,
         );
       }
 
@@ -148,7 +165,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     diagnostics.errors.push(
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Unknown error",
     );
     diagnostics.summary = {
       status: "error",

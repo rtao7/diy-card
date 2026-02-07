@@ -1,15 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getTasksForDate, updateTask, deleteTask, createTask } from "@/lib/tasks";
+import {
+  getTasksForDate,
+  updateTask,
+  deleteTask,
+  createTask,
+} from "@/lib/tasks";
 import { rateLimiter } from "@/lib/rateLimiter";
-
-interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  date?: string;
-  created_at?: string;
-  timeSpent?: string | number;
-}
+import { Task } from "@/lib/types";
 
 /**
  * React Query hook for fetching tasks for a specific date
@@ -64,7 +61,12 @@ export function useUpdateTaskMutation() {
       updates,
     }: {
       taskId: string;
-      updates: { text?: string; completed?: boolean; date?: string; timeSpent?: string | number };
+      updates: {
+        text?: string;
+        completed?: boolean;
+        date?: string;
+        timeSpent?: string | number;
+      };
     }) => updateTask(taskId, updates),
     onSuccess: (task) => {
       // Invalidate queries for both old and new dates
@@ -89,4 +91,3 @@ export function useDeleteTaskMutation() {
     },
   });
 }
-

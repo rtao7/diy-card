@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useCallback, useEffect, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -11,13 +9,7 @@ import {
 import { CardStyle } from "@/app/page";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
-
-interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  timeSpent?: string | number;
-}
+import { Task } from "@/lib/types";
 
 interface TodoCardProps {
   date: string;
@@ -109,7 +101,6 @@ export const TodoCard = memo(function TodoCard({
   focused = false,
   cardStyle = "line",
 }: TodoCardProps) {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [textareaValue, setTextareaValue] = useState<string>("");
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -123,15 +114,11 @@ export const TodoCard = memo(function TodoCard({
   const updateMutation = useUpdateTaskMutation();
   const deleteMutation = useDeleteTaskMutation();
 
-  // Update tasks when initialTasks prop changes (when new data is fetched from API)
+  // Use initialTasks directly as the source of truth
+  const tasks = initialTasks;
+
+  // Initialize time input values from tasks when they change
   useEffect(() => {
-    console.log("🔄 TodoCard: Updating tasks from prop", {
-      date,
-      initialTasksCount: initialTasks.length,
-      initialTasks,
-    });
-    setTasks(initialTasks);
-    // Initialize time input values from tasks
     const timeValues: Record<string, string> = {};
     initialTasks.forEach((task) => {
       if (
@@ -143,8 +130,7 @@ export const TodoCard = memo(function TodoCard({
       }
     });
     setTimeInputValues(timeValues);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTasks, date]);
+  }, [initialTasks]);
 
   // Update textarea value when tasks change or cardStyle changes (but not while user is typing)
   useEffect(() => {
@@ -171,14 +157,8 @@ export const TodoCard = memo(function TodoCard({
 
       const newCompleted = !task.completed;
 
-      // Optimistically update UI
-      setTasks((prevTasks) =>
-        prevTasks.map((t) =>
-          t.id === taskId ? { ...t, completed: newCompleted } : t
-        )
-      );
-
       // Save to backend using React Query mutation
+      // React Query will automatically refetch after success
       updateMutation.mutate(
         { taskId, updates: { completed: newCompleted } },
         {
@@ -186,23 +166,17 @@ export const TodoCard = memo(function TodoCard({
             toast.success(
               newCompleted
                 ? "Task marked as complete"
-                : "Task marked as incomplete"
+                : "Task marked as incomplete",
             );
           },
           onError: (error) => {
-            // Revert on error
-            setTasks((prevTasks) =>
-              prevTasks.map((t) =>
-                t.id === taskId ? { ...t, completed: !newCompleted } : t
-              )
-            );
             toast.error("Failed to update task. Please try again.");
             console.error("Error toggling task:", error);
           },
-        }
+        },
       );
     },
-    [tasks, updateMutation]
+    [tasks, updateMutation],
   );
 
   const addTask = useCallback(
@@ -211,59 +185,22 @@ export const TodoCard = memo(function TodoCard({
 
       const trimmedText = text.trim();
 
-      // Optimistically add task to UI immediately
-      const tempId = `temp-${Date.now()}-${insertIndex}`;
-      const optimisticTask: Task = {
-        id: tempId,
-        text: trimmedText,
-        completed: false,
-        timeSpent: "",
-      };
-
-      setTasks((prevTasks) => {
-        // Insert at the position where the empty slot was
-        // For empty slots, insertIndex should be >= prevTasks.length
-        // We'll insert at the end (prevTasks.length) to maintain order
-        const insertPos = Math.min(insertIndex, prevTasks.length);
-        const newTasks = [...prevTasks];
-        newTasks.splice(insertPos, 0, optimisticTask);
-        return newTasks;
-      });
-
       // Save to spreadsheet via React Query mutation
+      // React Query will automatically refetch and update the UI
       createMutation.mutate(
         { text: trimmedText, date, completed: false, timeSpent: "" },
         {
-          onSuccess: (createdTask) => {
-            // Replace the temporary task with the real one from the server
-            setTasks((prevTasks) =>
-              prevTasks.map((task) =>
-                task.id === tempId
-                  ? {
-                      id: createdTask.id,
-                      text: createdTask.text,
-                      completed: createdTask.completed,
-                      timeSpent: createdTask.timeSpent || "",
-                    }
-                  : task
-              )
-            );
+          onSuccess: () => {
             toast.success("Task created successfully");
           },
           onError: (error) => {
             console.error("❌ Failed to save task to spreadsheet:", error);
-
-            // Remove the optimistic task on error
-            setTasks((prevTasks) =>
-              prevTasks.filter((task) => task.id !== tempId)
-            );
-
             toast.error("Failed to save task. Please try again.");
           },
-        }
+        },
       );
     },
-    [date]
+    [date, createMutation],
   );
 
   const startEditing = useCallback((taskId: string, currentText: string) => {
@@ -293,15 +230,10 @@ export const TodoCard = memo(function TodoCard({
         return;
       }
 
-      // Optimistically update UI
-      setTasks((prevTasks) =>
-        prevTasks.map((t) =>
-          t.id === taskId ? { ...t, text: trimmedText } : t
-        )
-      );
       cancelEditing();
 
       // Save to backend using React Query mutation
+      // React Query will automatically refetch and update
       updateMutation.mutate(
         { taskId, updates: { text: trimmedText } },
         {
@@ -309,19 +241,13 @@ export const TodoCard = memo(function TodoCard({
             toast.success("Task updated successfully");
           },
           onError: (error) => {
-            // Revert on error
-            setTasks((prevTasks) =>
-              prevTasks.map((t) =>
-                t.id === taskId ? { ...t, text: task.text } : t
-              )
-            );
             toast.error("Failed to update task. Please try again.");
             console.error("Error updating task:", error);
           },
-        }
+        },
       );
     },
-    [editingText, tasks, cancelEditing]
+    [editingText, tasks, cancelEditing, updateMutation],
   );
 
   const handleDeleteTask = useCallback(
@@ -329,8 +255,6 @@ export const TodoCard = memo(function TodoCard({
       const task = tasks.find((t) => t.id === taskId);
       if (!task) return;
 
-      // Optimistically remove from UI
-      setTasks((prevTasks) => prevTasks.filter((t) => t.id !== taskId));
       // Remove time input value
       setTimeInputValues((prev) => {
         const newValues = { ...prev };
@@ -339,19 +263,13 @@ export const TodoCard = memo(function TodoCard({
       });
 
       // Actually delete the task from the database
+      // React Query will automatically refetch and update the UI
       deleteMutation.mutate(taskId, {
         onSuccess: () => {
           toast.success("Task deleted successfully");
         },
         onError: (error) => {
-          // Revert on error
-          setTasks((prevTasks) => {
-            const newTasks = [...prevTasks];
-            const insertIndex = tasks.findIndex((t) => t.id === taskId);
-            newTasks.splice(insertIndex, 0, task);
-            return newTasks;
-          });
-          // Restore time input value
+          // Restore time input value on error
           if (task.timeSpent) {
             setTimeInputValues((prev) => ({
               ...prev,
@@ -363,7 +281,7 @@ export const TodoCard = memo(function TodoCard({
         },
       });
     },
-    [tasks, deleteMutation]
+    [tasks, deleteMutation],
   );
 
   const handleTimeChange = useCallback(
@@ -374,14 +292,8 @@ export const TodoCard = memo(function TodoCard({
         [taskId]: value,
       }));
 
-      // Update task in state
-      setTasks((prevTasks) =>
-        prevTasks.map((t) =>
-          t.id === taskId ? { ...t, timeSpent: value || "" } : t
-        )
-      );
-
       // Save to backend
+      // React Query will automatically refetch and update the task
       const timeSpentValue = value.trim() === "" ? "" : value.trim();
       updateMutation.mutate(
         { taskId, updates: { timeSpent: timeSpentValue } },
@@ -390,27 +302,20 @@ export const TodoCard = memo(function TodoCard({
             // Silent success - no toast for time updates
           },
           onError: (error) => {
-            // Revert on error
+            // Revert time input value on error
             const task = tasks.find((t) => t.id === taskId);
             if (task) {
               setTimeInputValues((prev) => ({
                 ...prev,
                 [taskId]: String(task.timeSpent || ""),
               }));
-              setTasks((prevTasks) =>
-                prevTasks.map((t) =>
-                  t.id === taskId
-                    ? { ...t, timeSpent: task.timeSpent || "" }
-                    : t
-                )
-              );
             }
             console.error("Error updating time:", error);
           },
-        }
+        },
       );
     },
-    [tasks, updateMutation]
+    [tasks, updateMutation],
   );
 
   // Handle textarea changes for textarea style
@@ -461,9 +366,9 @@ export const TodoCard = memo(function TodoCard({
                     newTasks.push(existingTask); // Keep original
                     resolve();
                   },
-                }
+                },
               );
-            })
+            }),
           );
         } else {
           newTasks.push(existingTask);
@@ -490,18 +395,16 @@ export const TodoCard = memo(function TodoCard({
                   });
                   resolve();
                 },
-              }
+              },
             );
-          })
+          }),
         );
       }
     }
 
     // Wait for all mutations to complete
+    // React Query will automatically refetch and update the UI
     await Promise.all(promises);
-
-    // Update tasks - only keep tasks that are in the textarea
-    setTasks(newTasks);
   }, [textareaValue, tasks, date, updateMutation, createMutation]);
 
   // Create all items: existing tasks + empty slots (always 11 rows total)
@@ -522,7 +425,7 @@ export const TodoCard = memo(function TodoCard({
         focused && "border-[1.5px]",
         focused && "border-[#4728F5]",
         !focused && "border border-gray-300 scale-95",
-        className
+        className,
       )}
     >
       <CardContent className="p-5 py-4">
@@ -573,7 +476,7 @@ export const TodoCard = memo(function TodoCard({
                               }
                               className={cn(
                                 "text-base font-mono text-gray-700 flex-1 cursor-text",
-                                task.completed && "line-through text-gray-400"
+                                task.completed && "line-through text-gray-400",
                               )}
                             >
                               {task.text}

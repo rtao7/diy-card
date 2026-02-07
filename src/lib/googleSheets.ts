@@ -1,6 +1,23 @@
 import { google } from "googleapis";
 import path from "path";
 import fs from "fs";
+import { logger } from "./logger";
+
+/**
+ * Google Service Account Credentials structure
+ */
+interface GoogleServiceAccountCredentials {
+  type: "service_account";
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+}
 
 /**
  * Creates and returns a Google Sheets client
@@ -13,20 +30,22 @@ import fs from "fs";
  */
 export async function getGoogleSheetsClient() {
   try {
-    let credentials: any;
+    let credentials: GoogleServiceAccountCredentials;
     let methodUsed = "";
 
     // Method 1: Check for base64-encoded JSON (most reliable for production)
     const credentialsBase64 = process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64;
     if (credentialsBase64) {
       try {
-        const decoded = Buffer.from(credentialsBase64, "base64").toString("utf8");
+        const decoded = Buffer.from(credentialsBase64, "base64").toString(
+          "utf8",
+        );
         credentials = JSON.parse(decoded);
         methodUsed = "GOOGLE_SHEETS_CREDENTIALS_BASE64";
       } catch (parseError) {
-        console.error("Failed to decode base64 credentials:", parseError);
+        logger.error("Failed to decode base64 credentials:", parseError);
         throw new Error(
-          "GOOGLE_SHEETS_CREDENTIALS_BASE64 is not valid base64-encoded JSON. Please check your environment variable."
+          "GOOGLE_SHEETS_CREDENTIALS_BASE64 is not valid base64-encoded JSON. Please check your environment variable.",
         );
       }
     }
@@ -40,14 +59,19 @@ export async function getGoogleSheetsClient() {
       } catch (parseError) {
         // If that fails, try removing newlines and extra whitespace
         try {
-          const cleaned = credentialsJson.replace(/\n/g, "").replace(/\s+/g, " ").trim();
+          const cleaned = credentialsJson
+            .replace(/\n/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
           credentials = JSON.parse(cleaned);
           methodUsed = "GOOGLE_SHEETS_CREDENTIALS_JSON (cleaned)";
         } catch (secondParseError) {
-          console.error("Failed to parse JSON credentials:", parseError);
+          logger.error("Failed to parse JSON credentials:", parseError);
           throw new Error(
             "GOOGLE_SHEETS_CREDENTIALS_JSON is not valid JSON. Please check your environment variable. Error: " +
-              (parseError instanceof Error ? parseError.message : "Unknown error")
+              (parseError instanceof Error
+                ? parseError.message
+                : "Unknown error"),
           );
         }
       }
@@ -57,20 +81,20 @@ export async function getGoogleSheetsClient() {
       const credentialsPath = process.env.GOOGLE_SHEETS_CREDENTIALS;
       try {
         credentials = JSON.parse(
-          fs.readFileSync(path.resolve(credentialsPath), "utf8")
+          fs.readFileSync(path.resolve(credentialsPath), "utf8"),
         );
         methodUsed = "GOOGLE_SHEETS_CREDENTIALS (file path)";
       } catch (fileError) {
-        console.error("Failed to read credentials file:", fileError);
+        logger.error("Failed to read credentials file:", fileError);
         throw new Error(
           `Failed to read credentials file at ${credentialsPath}: ${
             fileError instanceof Error ? fileError.message : "Unknown error"
-          }`
+          }`,
         );
       }
     } else {
       throw new Error(
-        "No credentials found. Set one of: GOOGLE_SHEETS_CREDENTIALS_BASE64, GOOGLE_SHEETS_CREDENTIALS_JSON, or GOOGLE_SHEETS_CREDENTIALS"
+        "No credentials found. Set one of: GOOGLE_SHEETS_CREDENTIALS_BASE64, GOOGLE_SHEETS_CREDENTIALS_JSON, or GOOGLE_SHEETS_CREDENTIALS",
       );
     }
 
@@ -87,8 +111,8 @@ export async function getGoogleSheetsClient() {
       throw new Error("Invalid credentials: missing private_key");
     }
 
-    console.log(`✅ Google Sheets client initialized using: ${methodUsed}`);
-    console.log(`   Service account: ${credentials.client_email}`);
+    logger.info(`✅ Google Sheets client initialized using: ${methodUsed}`);
+    logger.info(`   Service account: ${credentials.client_email}`);
 
     // Create an auth client using the service account
     const auth = new google.auth.GoogleAuth({
@@ -102,8 +126,11 @@ export async function getGoogleSheetsClient() {
     return sheets;
   } catch (error) {
     console.error("❌ Error creating Google Sheets client:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error("   Error details:", errorMessage);
-    throw new Error(`Failed to initialize Google Sheets client: ${errorMessage}`);
+    throw new Error(
+      `Failed to initialize Google Sheets client: ${errorMessage}`,
+    );
   }
 }
