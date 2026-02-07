@@ -389,8 +389,10 @@ export const TodoCard = memo(function TodoCard({
                   // Add as temporary task anyway
                   newTasks.push({
                     id: `temp-${Date.now()}-${Math.random()}`,
+                    date: date,
                     text: taskText,
                     completed: isCompleted,
+                    created_at: new Date().toISOString(),
                     timeSpent: "",
                   });
                   resolve();
