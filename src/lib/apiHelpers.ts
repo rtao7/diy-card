@@ -71,7 +71,7 @@ export async function findTaskRow(
   });
 
   const rows = response.data.values || [];
-  const rowIndex = rows.findIndex((row) => row[0] === taskId);
+  const rowIndex = rows.findIndex((row: any) => row[0] === taskId);
 
   if (rowIndex === -1) {
     throw API_ERRORS.NOT_FOUND("Task");

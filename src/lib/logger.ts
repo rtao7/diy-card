@@ -8,7 +8,7 @@ type LogLevel = "log" | "info" | "warn" | "error" | "debug";
 class Logger {
   private isDevelopment = process.env.NODE_ENV !== "production";
 
-  private log(level: LogLevel, ...args: any[]) {
+  private logInternal(level: LogLevel, ...args: any[]) {
     if (!this.isDevelopment) {
       // In production, only log errors
       if (level === "error") {
@@ -25,35 +25,35 @@ class Logger {
    * Log general information (development only)
    */
   info(...args: any[]) {
-    this.log("info", ...args);
+    this.logInternal("info", ...args);
   }
 
   /**
    * Log warnings (development only)
    */
   warn(...args: any[]) {
-    this.log("warn", ...args);
+    this.logInternal("warn", ...args);
   }
 
   /**
    * Log errors (always logged, even in production)
    */
   error(...args: any[]) {
-    this.log("error", ...args);
+    this.logInternal("error", ...args);
   }
 
   /**
    * Log debug information (development only)
    */
   debug(...args: any[]) {
-    this.log("debug", ...args);
+    this.logInternal("debug", ...args);
   }
 
   /**
    * Log general messages (development only)
    */
   log(...args: any[]) {
-    this.log("log", ...args);
+    this.logInternal("log", ...args);
   }
 }
 

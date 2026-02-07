@@ -63,7 +63,7 @@ export function validateTaskData<T>(
     return { success: true, data: parsed };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0];
+      const firstError = (error as z.ZodError).issues[0];
       return {
         success: false,
         error: `${firstError.path.join(".")}: ${firstError.message}`,
