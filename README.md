@@ -1,3 +1,203 @@
+Daily card for Rui. The page is one day, ordered by start time, with the block that is happening now marked on the timeline. Tap a block to mark it pending, done, or slipped.
+
+An assistant writes the next day's blocks through the API at night, then reads them back at check-ins. Reading is public. Every write needs `API_KEY`.
+
+## Sheet columns to add
+
+Leave the existing columns where they are:
+
+| Column | Header | Notes |
+| --- | --- | --- |
+| A | `id` | |
+| B | `date` | `M/D/YYYY`, for example `11/24/2026` |
+| C | `text` | |
+| D | `completed` | `true` or `false`. Kept in sync: `true` only when status is `done` |
+| E | `created_at` | ISO timestamp |
+
+Append these headers in the next empty columns, in this order:
+
+| Header | Example | Notes |
+| --- | --- | --- |
+| `start` | `20:00` | 24-hour `HH:MM`. Blank if the block has no time |
+| `end` | `20:45` | Must be after `start` |
+| `status` | `pending` | `pending`, `done`, or `slipped` |
+| `first_step` | `Open yesterday's notes` | Optional two-minute start |
+| `done_means` | `Outline is in the doc` | Optional definition of done |
+
+On the current sheet, which ends at `created_at`, that is:
+
+- F `start`
+- G `end`
+- H `status`
+- I `first_step`
+- J `done_means`
+
+If a `time_spent` column is already present, leave it and put the five new headers after it. Do not rename or reorder `id`, `date`, `text`, `completed`, or `created_at`.
+
+Old rows that only have `completed` still read: `true` becomes `done`, `false` or blank becomes `pending`. A blank `status` cell is filled in from `completed`. `slipped` is stored as `status=slipped` and `completed=false`.
+
+The first authenticated write fills any blank header cells with these names. It does not overwrite a header that already has text.
+
+## API
+
+Base URL in production: `https://diy-card.vercel.app`
+
+Send the key on every write, either header works:
+
+```bash
+Authorization: Bearer $API_KEY
+X-API-Key: $API_KEY
+```
+
+Dates are `M/D/YYYY` without leading zeros (`11/24/2026`). Leading zeros are accepted and normalized. Times are 24-hour `HH:MM`. `8:00 PM` is accepted and stored as `20:00`.
+
+Every task in a response has this shape:
+
+```json
+{
+  "id": "task-m1abc-0-k3p9qx",
+  "date": "11/24/2026",
+  "text": "Write the outline",
+  "completed": false,
+  "status": "pending",
+  "created_at": "2026-11-23T06:00:00.000Z",
+  "start": "20:00",
+  "end": "20:45",
+  "first_step": "Open yesterday's notes",
+  "done_means": "Outline is in the doc",
+  "timeSpent": ""
+}
+```
+
+`completed` is `true` only when `status` is `done`. `status` is `pending`, `done`, or `slipped`. Lists are ordered by `start` (blocks with no start come last).
+
+### Read a day
+
+Public. No API key.
+
+```bash
+curl "https://diy-card.vercel.app/api/tasks?date=11/24/2026"
+```
+
+`200`
+
+```json
+{
+  "success": true,
+  "date": "11/24/2026",
+  "count": 0,
+  "tasks": []
+}
+```
+
+`tasks` is the array of task objects above. An empty day also includes `"message": "No tasks found for this date"`.
+
+### Write a day's blocks
+
+Use this at night to create tomorrow's plan. Up to 50 blocks. Requires `API_KEY`.
+
+```bash
+curl -X POST "https://diy-card.vercel.app/api/tasks/batch" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "11/24/2026",
+    "tasks": [
+      {
+        "text": "Write the outline",
+        "start": "20:00",
+        "end": "20:45",
+        "first_step": "Open the notes from yesterday",
+        "done_means": "Outline is in the doc"
+      },
+      {
+        "text": "Read",
+        "start": "21:00",
+        "end": "21:30",
+        "status": "pending"
+      }
+    ]
+  }'
+```
+
+`201`
+
+```json
+{
+  "success": true,
+  "date": "11/24/2026",
+  "count": 2,
+  "tasks": []
+}
+```
+
+Each item in `tasks` accepts:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `text` | yes | 1–500 characters |
+| `start` | no | `HH:MM` |
+| `end` | no | `HH:MM`, after `start` |
+| `status` | no | `pending` (default), `done`, or `slipped` |
+| `completed` | no | Legacy. `true` maps to `done`, `false` maps to `pending`. Do not send it in conflict with `status` |
+| `first_step` | no | Up to 200 characters. `firstStep` is also accepted |
+| `done_means` | no | Up to 200 characters. `doneMeans` is also accepted |
+
+### Update a block's status
+
+Use this at a check-in. Requires `API_KEY`.
+
+```bash
+curl -X PATCH "https://diy-card.vercel.app/api/tasks/TASK_ID/status" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"done"}'
+```
+
+`status` is `pending`, `done`, or `slipped` (case-insensitive). `200`
+
+```json
+{
+  "success": true,
+  "task": {
+    "id": "TASK_ID",
+    "date": "11/24/2026",
+    "text": "Write the outline",
+    "completed": true,
+    "status": "done",
+    "created_at": "2026-11-23T06:00:00.000Z",
+    "start": "20:00",
+    "end": "20:45",
+    "first_step": "Open yesterday's notes",
+    "done_means": "Outline is in the doc",
+    "timeSpent": ""
+  }
+}
+```
+
+`completed` becomes `true` for `done`, and `false` for `pending` or `slipped`.
+
+### Create or edit a single block
+
+`POST /api/tasks` creates one block. Same fields as a batch item, plus required `date`. `201` with `{ "success": true, "task": { ... } }`.
+
+`PATCH /api/tasks/TASK_ID` changes any of `text`, `date`, `start`, `end`, `status`, `completed`, `first_step`, `done_means`, `timeSpent`. Send only the fields that change. `200` with `{ "success": true, "task": { ... } }`.
+
+`DELETE /api/tasks/TASK_ID` removes a row. `200` with `{ "success": true, "message": "Task deleted successfully" }`.
+
+### Errors
+
+| Status | Body | When |
+| --- | --- | --- |
+| `400` | `{ "error": "Validation failed", "details": "end must be after start" }` | Bad JSON, bad date or time, `end` not after `start`, `status` not one of the three values, `status` and `completed` disagree |
+| `401` | `{ "error": "Unauthorized", "message": "...", "hint": "..." }` | Write without `API_KEY` |
+| `404` | `{ "error": "Task not found" }` | Unknown id |
+| `500` | `{ "error": "...", "details": "...", "hint": "..." }` | Sheet credentials, permissions, or the tab name |
+
+The page itself writes through server actions, so the browser does not need the key. Do not put `API_KEY` in `NEXT_PUBLIC_API_KEY`.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -38,8 +238,8 @@ This project requires Google Sheets API credentials to function. You need to set
 1. **`GOOGLE_SHEETS_CREDENTIALS_JSON`** (for production/cloud platforms) - The entire service account JSON as a string
 2. **`GOOGLE_SHEETS_CREDENTIALS`** (for local development) - Path to your credentials JSON file
 3. **`GOOGLE_SHEETS_SPREADSHEET_ID`** - Your Google Spreadsheet ID
-4. **`API_KEY`** (server-side) - Secret API key for write operations (create/edit tasks) - **Required to protect write access**
-5. **`NEXT_PUBLIC_API_KEY`** (client-side) - Same API key, exposed to client for frontend requests
+4. **`API_KEY`** (server-side) - Secret API key for write operations (create, edit, delete). Required in production. The browser does not use it.
+5. **`MOCK_SHEETS`** (optional, local only) - Set to `true` to use an in-memory day instead of Google Sheets. Local dev does this automatically when sheet credentials are missing.
 
 ### Local Development Setup
 
@@ -51,7 +251,6 @@ This project requires Google Sheets API credentials to function. You need to set
 GOOGLE_SHEETS_CREDENTIALS=/path/to/your/credentials.json
 GOOGLE_SHEETS_SPREADSHEET_ID=your-spreadsheet-id-here
 API_KEY=your-secret-api-key-here
-NEXT_PUBLIC_API_KEY=your-secret-api-key-here
 ```
 
 **Note:** Generate a secure random API key. You can use:
@@ -65,9 +264,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 **Security Note:**
 
-- **GET requests** (reading tasks) are **public** - anyone can view tasks
-- **POST requests** (creating tasks) require the API key - only you can create/edit tasks
-- Keep your `API_KEY` secret and never commit it to git
+- **GET** `/api/tasks` is public
+- **POST**, **PATCH**, and **DELETE** require `API_KEY`
+- Keep `API_KEY` secret and never commit it. Do not expose it as `NEXT_PUBLIC_API_KEY`
 
 ### Production Deployment
 
@@ -172,6 +371,7 @@ If data is not showing in production, use the test endpoint to diagnose issues:
      - Column C: text
      - Column D: completed ("true" or "false")
      - Column E: created_at
+     - Then `start`, `end`, `status`, `first_step`, `done_means` (see "Sheet columns to add")
    - Make sure row 1 is a header row (it will be skipped)
    - Data should start from row 2
 

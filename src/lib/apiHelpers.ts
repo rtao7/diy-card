@@ -1,6 +1,22 @@
 import { getGoogleSheetsClient } from "./googleSheets";
 import { ApiError, API_ERRORS } from "./apiError";
+import { decodeTaskRow, encodeRow, resolveLayout } from "./sheetSchema";
 import { Task } from "./types";
+
+type SheetsClient = Awaited<ReturnType<typeof getGoogleSheetsClient>>;
+
+const CANONICAL_HEADER = [
+  "id",
+  "date",
+  "text",
+  "completed",
+  "created_at",
+  "start",
+  "end",
+  "status",
+  "first_step",
+  "done_means",
+];
 
 /**
  * Configuration for Google Sheets operations
@@ -35,7 +51,7 @@ export function getSheetsConfig(): SheetsConfig {
  * @returns Result from the handler
  */
 export async function withSheetsClient<T>(
-  handler: (sheets: any, config: SheetsConfig) => Promise<T>,
+  handler: (sheets: SheetsClient, config: SheetsConfig) => Promise<T>,
 ): Promise<T> {
   try {
     const sheets = await getGoogleSheetsClient();
@@ -60,18 +76,20 @@ export async function withSheetsClient<T>(
  * @returns Object with rowIndex and row data, or throws if not found
  */
 export async function findTaskRow(
-  sheets: any,
+  sheets: SheetsClient,
   config: SheetsConfig,
   taskId: string,
-): Promise<{ rowIndex: number; row: any[]; actualRowNumber: number }> {
-  const range = `${config.sheetName}!A2:F1000`;
+): Promise<{ rowIndex: number; row: unknown[]; actualRowNumber: number }> {
+  const range = `${config.sheetName}!A2:AZ2000`;
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: config.spreadsheetId,
     range,
   });
 
   const rows = response.data.values || [];
-  const rowIndex = rows.findIndex((row: any) => row[0] === taskId);
+  const rowIndex = rows.findIndex(
+    (row) => Array.isArray(row) && String(row[0] ?? "") === taskId,
+  );
 
   if (rowIndex === -1) {
     throw API_ERRORS.NOT_FOUND("Task");
@@ -93,14 +111,25 @@ export async function findTaskRow(
  * @param row - Row data from Google Sheets
  * @returns Task object
  */
-export function rowToTask(row: any[]): Task {
+export function rowToTask(row: unknown[]): Task {
+  const layout = resolveLayout(CANONICAL_HEADER, []);
+  const decoded = decodeTaskRow(
+    row.map((cell) => (cell == null ? "" : String(cell))),
+    layout,
+  );
+  if (decoded) return decoded;
   return {
-    id: row[0] || "",
-    date: row[1] || "",
-    text: row[2] || "",
-    completed: row[3] === "true",
-    created_at: row[4] || "",
-    timeSpent: row[5] || "",
+    id: "",
+    date: "",
+    text: "",
+    completed: false,
+    status: "pending",
+    created_at: "",
+    start: "",
+    end: "",
+    first_step: "",
+    done_means: "",
+    timeSpent: "",
   };
 }
 
@@ -110,15 +139,22 @@ export function rowToTask(row: any[]): Task {
  * @param task - Task object
  * @returns Array of values for Google Sheets
  */
-export function taskToRow(task: Partial<Task> & { id: string }): any[] {
-  return [
-    task.id,
-    task.date || "",
-    task.text || "",
-    task.completed === true ? "true" : "false",
-    task.created_at || new Date().toISOString(),
-    task.timeSpent !== undefined ? String(task.timeSpent) : "",
-  ];
+export function taskToRow(task: Partial<Task> & { id: string }): string[] {
+  const layout = resolveLayout(CANONICAL_HEADER, []);
+  const status = task.status ?? (task.completed ? "done" : "pending");
+  return encodeRow(undefined, {
+    id: task.id,
+    date: task.date || "",
+    text: task.text || "",
+    status,
+    completed: status === "done",
+    created_at: task.created_at || new Date().toISOString(),
+    start: task.start || "",
+    end: task.end || "",
+    first_step: task.first_step || "",
+    done_means: task.done_means || "",
+    timeSpent: task.timeSpent != null ? String(task.timeSpent) : "",
+  }, layout);
 }
 
 /**
@@ -129,7 +165,7 @@ export function taskToRow(task: Partial<Task> & { id: string }): any[] {
  * @returns Sheet ID
  */
 export async function getSheetId(
-  sheets: any,
+  sheets: SheetsClient,
   config: SheetsConfig,
 ): Promise<number> {
   const spreadsheet = await sheets.spreadsheets.get({
@@ -137,7 +173,7 @@ export async function getSheetId(
   });
 
   const sheet = spreadsheet.data.sheets?.find(
-    (s: any) => s.properties?.title === config.sheetName,
+    (item) => item.properties?.title === config.sheetName,
   );
 
   if (!sheet || !sheet.properties?.sheetId) {

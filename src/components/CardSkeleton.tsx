@@ -1,33 +1,16 @@
-import { Card, CardContent } from "@/components/ui/card";
-
-/**
- * Skeleton loader for a card while tasks are loading
- */
 export function CardSkeleton() {
   return (
-    <Card className="min-w-[400px] h-full shadow-lg bg-white border border-gray-300 scale-95">
-      <CardContent className="p-5 py-4">
-        {/* Header skeleton */}
-        <div className="flex justify-between items-start mb-4">
-          <div className="w-4 h-4 rounded-full bg-gray-200 animate-pulse"></div>
-          <div className="h-3 w-16 bg-gray-200 rounded animate-pulse"></div>
-          <div className="h-3 w-20 bg-gray-200 rounded animate-pulse"></div>
-        </div>
-
-        {/* Task list skeleton */}
-        <div className="space-y-0">
-          {Array.from({ length: 10 }).map((_, index) => (
-            <div key={index}>
-              <div className="flex items-center gap-3 py-2.5">
-                <div className="w-4 h-4 bg-gray-200 rounded-sm animate-pulse"></div>
-                <div className="h-4 flex-1 bg-gray-200 rounded animate-pulse"></div>
-              </div>
-              {index < 9 && <div className="h-px bg-gray-200" />}
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-3xl bg-[#f4f4f1] px-4 py-5">
+      <div className="mb-5 h-3 w-28 rounded-full bg-[#e4e4e0] motion-safe:animate-pulse" />
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="rounded-2xl px-3 py-3">
+            <div className="h-3 w-24 rounded-full bg-[#e4e4e0] motion-safe:animate-pulse" />
+            <div className="mt-3 h-4 w-3/4 rounded-full bg-[#e7e7e3] motion-safe:animate-pulse" />
+            <div className="mt-2 h-3 w-1/2 rounded-full bg-[#ecece8] motion-safe:animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
-

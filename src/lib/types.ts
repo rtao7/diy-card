@@ -1,29 +1,33 @@
 /**
- * Shared type definitions for the DIY Card application
+ * Shared type definitions for the daily card.
+ *
+ * `completed` stays on every task so older clients keep working:
+ * it is true only when `status` is "done". Pending and slipped are false.
  */
 
-/**
- * Represents a task in the DIY card system
- *
- * @property id - Unique identifier for the task
- * @property date - Date in M/D/YYYY format (e.g., "12/25/2024")
- * @property text - The task description/content
- * @property completed - Whether the task is marked as complete
- * @property created_at - ISO timestamp of when the task was created
- * @property timeSpent - Optional time spent on the task (e.g., "2h", "30m")
- */
+export type TaskStatus = "pending" | "done" | "slipped";
+
 export interface Task {
   id: string;
+  /** Calendar day as M/D/YYYY, for example "11/24/2026". */
   date: string;
   text: string;
+  /** True only when status is "done". */
   completed: boolean;
+  status: TaskStatus;
   created_at: string;
-  timeSpent?: string | number;
+  /** 24-hour HH:MM. Empty when the block has no start. */
+  start: string;
+  /** 24-hour HH:MM. Empty when the block has no end. */
+  end: string;
+  /** Optional two-minute start action. */
+  first_step: string;
+  /** Optional description of what done looks like. */
+  done_means: string;
+  /** Legacy duration note. Empty when unused. */
+  timeSpent: string;
 }
 
-/**
- * API error response structure
- */
 export interface ApiErrorResponse {
   error: string;
   details?: string;
@@ -39,21 +43,15 @@ export interface ApiErrorResponse {
   };
 }
 
-/**
- * Type guard to check if an error is an API error
- */
 export function isApiError(error: unknown): error is ApiErrorResponse {
   return (
     typeof error === "object" &&
     error !== null &&
     ("apiError" in error ||
-      ("error" in error && typeof (error as any).error === "string"))
+      ("error" in error && typeof (error as { error?: unknown }).error === "string"))
   );
 }
 
-/**
- * API success response for task operations
- */
 export interface TaskApiResponse {
   success: boolean;
   task?: Task;

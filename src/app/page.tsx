@@ -1,186 +1,91 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CardSkeleton } from "@/components/CardSkeleton";
 import { CardWrapper } from "@/components/CardWrapper";
 import { Header } from "@/components/Header";
-import { Button } from "@/components/ui/button";
-import { useCardFocus } from "@/hooks/useCardFocus";
-import { LucideFlipHorizontal, SwitchCameraIcon, Check } from "lucide-react";
-
-function formatDate(date: Date): string {
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-}
-
-function getDayName(date: Date): string {
-  const days = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  return days[date.getDay()];
-}
-
-export type CardStyle = "line" | "textarea";
+import { useIsClient } from "@/hooks/useIsClient";
+import { formatSheetDate } from "@/lib/dates";
 
 export default function Home() {
-  const today = new Date();
-  const [cardStyles, setCardStyles] = useState<Record<string, CardStyle>>({});
-  const [showStyleMenu, setShowStyleMenu] = useState(false);
-  const styleMenuRef = useRef<HTMLDivElement>(null);
+  const isClient = useIsClient();
+  const [dayOffset, setDayOffset] = useState(0);
 
-  // Generate 10 cards (5 days before to 4 days after today = 10 cards total)
-  const totalDays = 10;
-  const daysBefore = 5; // 5 days before today
-  const cards = useMemo(
-    () =>
-      Array.from({ length: totalDays }, (_, i) => {
-        const date = new Date(today);
-        date.setDate(today.getDate() + (i - daysBefore)); // -5 to +4
-        return {
-          date,
-          formattedDate: formatDate(date),
-          day: getDayName(date),
-          isToday: i === daysBefore,
-        };
-      }),
-    [today, daysBefore, totalDays]
-  );
+  const selected = useMemo(() => {
+    if (!isClient) return null;
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + dayOffset);
+    return date;
+  }, [isClient, dayOffset]);
 
-  // Use custom hook for card focus management
-  const { focusedIndex, scrollContainerRef, setCardRef, scrollToCard } =
-    useCardFocus({
-      totalCards: totalDays,
-      initialFocusedIndex: daysBefore,
-      debounceMs: 100,
-    });
-
-  // Scroll to center card on initial load
-  useEffect(() => {
-    scrollToCard(daysBefore, "auto");
-  }, [scrollToCard, daysBefore]);
-
-  // Close style menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        styleMenuRef.current &&
-        !styleMenuRef.current.contains(event.target as Node)
-      ) {
-        setShowStyleMenu(false);
-      }
-    };
-
-    if (showStyleMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showStyleMenu]);
-
-  // Get the focused card's style for the menu
-  const focusedCard = cards[focusedIndex];
-  const focusedCardDate = focusedCard?.formattedDate;
-  const currentFocusedStyle = focusedCardDate
-    ? cardStyles[focusedCardDate] || "line"
-    : "line";
+  const weekday = selected?.toLocaleDateString("en-US", { weekday: "long" }) ?? "";
+  const heading = selected
+    ? selected.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
 
   return (
-    <div className="flex flex-col h-screen font-mono bg-gradient-to-b from-[#f5f3f0] to-[#d4d8d6] overflow-hidden">
+    <div className="min-h-dvh bg-[#e8e8e4] font-sans text-[#2a2a28]">
       <Header />
-
-      {/* Main Content */}
-      <div className="flex-1 flex items-center">
-        <div
-          ref={scrollContainerRef}
-          className="flex items-center gap-8 w-full h-full overflow-x-auto overflow-y-hidden scrollbar-hide snap-x snap-mandatory"
-          style={{
-            scrollSnapType: "x mandatory",
-            paddingLeft: "calc(50% - 200px)", // Center the first card
-            paddingRight: "calc(50% - 200px)", // Center the last card
-          }}
-        >
-          {cards.map((card, index) => {
-            const isFocused = index === focusedIndex;
-
-            return (
-              <div
-                key={card.formattedDate}
-                ref={(el) => setCardRef(index, el)}
-                className="shrink-0 snap-center"
+      <main className="mx-auto w-full max-w-[28rem] px-4 pb-16">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <DayButton
+            direction="previous"
+            onClick={() => setDayOffset((value) => value - 1)}
+          />
+          <div className="min-w-0 text-center">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#7a7a74]">
+              {weekday || "\u00a0"}
+            </p>
+            <h1 className="mt-1 text-[22px] font-medium leading-tight tracking-[-0.03em]">
+              {heading || "Daily"}
+            </h1>
+            {selected && dayOffset !== 0 && (
+              <button
+                type="button"
+                onClick={() => setDayOffset(0)}
+                className="mt-1 min-h-11 px-3 text-[12px] text-[#5e5e5a] underline-offset-4 hover:underline"
               >
-                <CardWrapper
-                  date={card.formattedDate}
-                  day={card.day}
-                  isFocused={isFocused}
-                  cardStyle={cardStyles[card.formattedDate] || "line"}
-                />
-              </div>
-            );
-          })}
+                Back to today
+              </button>
+            )}
+          </div>
+          <DayButton
+            direction="next"
+            onClick={() => setDayOffset((value) => value + 1)}
+          />
         </div>
-      </div>
-      <div className="pb-6 flex justify-center space-x-4">
-        <Button variant="outline" className="text-lg gap-2">
-          <LucideFlipHorizontal size={20} />
-          Flip
-        </Button>
-        <div className="relative" ref={styleMenuRef}>
-          <Button
-            variant="outline"
-            className="text-lg gap-2"
-            onClick={() => setShowStyleMenu(!showStyleMenu)}
-          >
-            <SwitchCameraIcon size={20} />
-            Change Card
-          </Button>
-          {showStyleMenu && (
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 bg-white border border-gray-300 rounded-md shadow-lg z-50">
-              <div className="py-1">
-                <button
-                  onClick={() => {
-                    if (focusedCardDate) {
-                      setCardStyles((prev) => ({
-                        ...prev,
-                        [focusedCardDate]: "line",
-                      }));
-                    }
-                    setShowStyleMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center justify-between"
-                >
-                  <span className="text-base">Line Style</span>
-                  {currentFocusedStyle === "line" && (
-                    <Check size={18} className="text-[#4728F5]" />
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    if (focusedCardDate) {
-                      setCardStyles((prev) => ({
-                        ...prev,
-                        [focusedCardDate]: "textarea",
-                      }));
-                    }
-                    setShowStyleMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center justify-between"
-                >
-                  <span className="text-base">Text Area</span>
-                  {currentFocusedStyle === "textarea" && (
-                    <Check size={18} className="text-[#4728F5]" />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+        {selected ? (
+          <CardWrapper date={formatSheetDate(selected)} />
+        ) : (
+          <CardSkeleton />
+        )}
+      </main>
     </div>
+  );
+}
+
+function DayButton({
+  direction,
+  onClick,
+}: {
+  direction: "previous" | "next";
+  onClick: () => void;
+}) {
+  const Icon = direction === "previous" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      aria-label={direction === "previous" ? "Previous day" : "Next day"}
+      onClick={onClick}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#2a2a28] transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[#deded8] active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2a2a28] motion-reduce:transition-none motion-reduce:active:scale-100"
+    >
+      <Icon size={18} strokeWidth={1.75} aria-hidden />
+    </button>
   );
 }
