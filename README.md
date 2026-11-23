@@ -1,182 +1,259 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# diy card
 
-## Getting Started
+Rui's daily plan. An assistant writes the next day's blocks through the API each night, and reads them back at check-ins. The card shows one day as a timeline. Tap a block to mark it pending, done, or slipped.
 
-First, run the development server:
+## Design system
+
+The card uses [ray-ui](https://github.com/Rtao7/ray-design-system), the package exported by Rui's design system. It is installed as a git dependency (the repo is set up for that: `exports` point at the TypeScript source and at `ray-ui/tokens.css`). The tokens and components are not copied into this repo.
+
+```json
+"ray-ui": "github:Rtao7/ray-design-system#9a6be410d8e8aceaf6a320ffed480a9005706135"
+```
+
+`next.config.ts` sets `transpilePackages: ["ray-ui"]` so Next compiles that source. Tokens load once from `src/app/globals.css`:
+
+```css
+@import "ray-ui/tokens.css";
+```
+
+The card uses `Button` and `Text` from `ray-ui`. Color, type, spacing, radius, and motion all come from those tokens, including the neutral gray hairlines. `ReplyBox` and `ChatComposer` are chat controls, so they are not on the plan.
+
+Components this screen needed and ray-ui does not ship yet are built locally under `src/components/day/`. They are listed under [Missing from ray-design-system](#missing-from-ray-design-system).
+
+## Sheet columns
+
+Row 1 is the header. Data starts on row 2. Add these headers in this order. Names are exact:
+
+| Column | Header |
+| --- | --- |
+| A | `id` |
+| B | `date` |
+| C | `text` |
+| D | `completed` |
+| E | `created_at` |
+| F | `start` |
+| G | `end` |
+| H | `status` |
+| I | `first_step` |
+| J | `done_means` |
+
+- `date` is `M/D/YYYY`, for example `11/24/2026`.
+- `start` and `end` are 24-hour `HH:MM`, for example `20:00` and `20:45`. Format columns F and G as plain text so Sheets does not turn them into time values.
+- `status` is `pending`, `done`, or `slipped`.
+- `first_step` is a two-minute starting action. `done_means` is the finish line. Both can be empty.
+- `completed` stays in column D. It is `true` only when status is `done`, and `false` for `pending` or `slipped`.
+
+Older rows still read. A row with no `status` cell uses `completed`: `true` (also `TRUE`, `1`, or `yes`) becomes `done`, and anything else becomes `pending`. When `status` is present, it wins. An older freeform note left in column F (the previous build sometimes stored `time_spent` there, such as `30`) is ignored unless it is a clock time.
+
+The sheet name defaults to `Sheet1`. Override it with `GOOGLE_SHEETS_SHEET_NAME`.
+
+## API
+
+Production base: `https://diy-card.vercel.app`
+
+`GET` is public. Every write (`POST`, `PATCH`, `DELETE`) needs the server `API_KEY`:
 
 ```bash
+-H "Authorization: Bearer $API_KEY"
+```
+
+`X-API-Key: $API_KEY` works too. The card itself updates a status through a server action, so the browser never sees the key. Assistants should use the routes below.
+
+Times must be `HH:MM`. `end` must be later than `start` on the same day. Dates must be `M/D/YYYY`.
+
+### Read one day
+
+`GET /api/tasks?date=11/24/2026`
+
+```bash
+curl "https://diy-card.vercel.app/api/tasks?date=11/24/2026"
+```
+
+`200`
+
+```json
+{
+  "success": true,
+  "date": "11/24/2026",
+  "count": 1,
+  "tasks": [
+    {
+      "id": "task-1730000000000-0-ab12cd",
+      "date": "11/24/2026",
+      "text": "Deep work",
+      "completed": false,
+      "created_at": "2026-11-23T08:00:00.000Z",
+      "start": "20:00",
+      "end": "20:45",
+      "status": "pending",
+      "first_step": "Open the doc",
+      "done_means": "The next section is sent"
+    }
+  ]
+}
+```
+
+Blocks are ordered by `start`. A block with no start comes after the timed ones. `completed` is `true` only when `status` is `done`. An empty day is `200` with `"tasks": []` and `"count": 0`.
+
+### Create one task
+
+`POST /api/tasks`
+
+```bash
+curl -X POST "https://diy-card.vercel.app/api/tasks" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "11/24/2026",
+    "text": "Deep work",
+    "start": "20:00",
+    "end": "20:45",
+    "first_step": "Open the doc",
+    "done_means": "The next section is sent"
+  }'
+```
+
+`status` is optional (`pending` when omitted). The older `completed` boolean is still accepted: `true` means `done`, `false` means `pending`. If both are sent, `status` wins.
+
+`201`
+
+```json
+{ "success": true, "task": { "id": "task-…", "date": "11/24/2026", "text": "Deep work", "completed": false, "created_at": "…", "start": "20:00", "end": "20:45", "status": "pending", "first_step": "Open the doc", "done_means": "The next section is sent" } }
+```
+
+### Create several tasks for a date
+
+`POST /api/tasks/batch`
+
+This is the night-before call. Every task uses the batch `date` unless that task sets its own.
+
+```bash
+curl -X POST "https://diy-card.vercel.app/api/tasks/batch" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "11/24/2026",
+    "tasks": [
+      {
+        "text": "Deep work",
+        "start": "20:00",
+        "end": "20:45",
+        "first_step": "Open the doc",
+        "done_means": "The next section is sent"
+      },
+      {
+        "text": "Walk",
+        "start": "21:00",
+        "end": "21:30",
+        "first_step": "Put shoes on",
+        "done_means": "Back at the desk"
+      }
+    ]
+  }'
+```
+
+`201`
+
+```json
+{
+  "success": true,
+  "date": "11/24/2026",
+  "count": 2,
+  "tasks": []
+}
+```
+
+`tasks` in the response is the created blocks, in the same order as the request, each with the shape shown in the read example. At most 40 tasks per call.
+
+### Update one task's status
+
+`PATCH /api/tasks/{id}/status`
+
+```bash
+curl -X PATCH "https://diy-card.vercel.app/api/tasks/task-1730000000000-0-ab12cd/status" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "done" }'
+```
+
+`status` is `pending`, `done`, or `slipped`. This also writes column D (`true` for done, `false` otherwise) so an older reader stays in sync.
+
+`200`
+
+```json
+{ "success": true, "task": { "id": "task-1730000000000-0-ab12cd", "status": "done", "completed": true } }
+```
+
+The `task` object is the full block, not only the two fields abbreviated here.
+
+### Update other fields
+
+`PATCH /api/tasks/{id}`
+
+Send any subset of `text`, `date`, `completed`, `status`, `start`, `end`, `first_step`, `done_means`. Same auth and the same full task in the response.
+
+### Delete
+
+`DELETE /api/tasks/{id}`
+
+```json
+{ "success": true, "message": "Task deleted successfully" }
+```
+
+### Errors
+
+| Status | When |
+| --- | --- |
+| 400 | Missing date, bad JSON, bad time, `end` not after `start`, or an unknown status |
+| 401 | Write without a matching API key |
+| 404 | No row with that id |
+| 500 | Sheets credentials, permissions, or the sheet name |
+
+```json
+{ "error": "Validation failed", "details": "end must be after start" }
+```
+
+```json
+{ "error": "Unauthorized", "message": "API key required for write operations. …" }
+```
+
+## Local development
+
+```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Environment Variables
-
-This project requires Google Sheets API credentials to function. You need to set up the following environment variables:
-
-### Required Environment Variables
-
-1. **`GOOGLE_SHEETS_CREDENTIALS_JSON`** (for production/cloud platforms) - The entire service account JSON as a string
-2. **`GOOGLE_SHEETS_CREDENTIALS`** (for local development) - Path to your credentials JSON file
-3. **`GOOGLE_SHEETS_SPREADSHEET_ID`** - Your Google Spreadsheet ID
-4. **`API_KEY`** (server-side) - Secret API key for write operations (create/edit tasks) - **Required to protect write access**
-5. **`NEXT_PUBLIC_API_KEY`** (client-side) - Same API key, exposed to client for frontend requests
-
-### Local Development Setup
-
-1. Download your Google Service Account credentials JSON file
-2. Store it outside the repository (e.g., `~/credentials/my-credentials.json`)
-3. Create a `.env.local` file in the project root:
+With no Google credentials, development uses an in-memory sheet and seeds today with a few blocks (one current, one done, one slipped). Nothing is sent to Google. Force that with `GOOGLE_SHEETS_MOCK=1`, or set `GOOGLE_SHEETS_MOCK=0` to require the real sheet.
 
 ```bash
-GOOGLE_SHEETS_CREDENTIALS=/path/to/your/credentials.json
-GOOGLE_SHEETS_SPREADSHEET_ID=your-spreadsheet-id-here
-API_KEY=your-secret-api-key-here
-NEXT_PUBLIC_API_KEY=your-secret-api-key-here
+npm test
+npm run lint
+npm run build
 ```
 
-**Note:** Generate a secure random API key. You can use:
+### Environment
 
-```bash
-# Generate a random API key
-openssl rand -hex 32
-# or
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+Do not commit credentials or `API_KEY`.
 
-**Security Note:**
+| Variable | Role |
+| --- | --- |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | Sheet id from the URL |
+| `GOOGLE_SHEETS_SHEET_NAME` | Tab name, default `Sheet1` |
+| `GOOGLE_SHEETS_CREDENTIALS` | Local path to the service account JSON |
+| `GOOGLE_SHEETS_CREDENTIALS_JSON` | Same JSON as one string, for hosted deploys |
+| `GOOGLE_SHEETS_CREDENTIALS_BASE64` | Base64 of that JSON |
+| `API_KEY` | Secret required on every write |
+| `GOOGLE_SHEETS_MOCK` | `1` memory sheet, `0` real sheet |
 
-- **GET requests** (reading tasks) are **public** - anyone can view tasks
-- **POST requests** (creating tasks) require the API key - only you can create/edit tasks
-- Keep your `API_KEY` secret and never commit it to git
+Share the sheet with the service account email as an editor. On Vercel, set the variables for Production, Preview, and Development, then redeploy. `GET /api/tasks/test` checks the connection. In production that route also requires the API key.
 
-### Production Deployment
+## Missing from ray-design-system
 
-For production (Vercel, Netlify, etc.), use the `GOOGLE_SHEETS_CREDENTIALS_JSON` variable:
+Built in `src/components/day/` until they exist in ray-ui. Each one uses ray tokens only.
 
-1. **Get your credentials JSON content:**
-
-   ```bash
-   cat /path/to/your/credentials.json
-   ```
-
-2. **Set environment variables in your hosting platform:**
-
-   **For Vercel:**
-
-   - Go to your project settings → Environment Variables
-   - Add `GOOGLE_SHEETS_CREDENTIALS_JSON` with the entire JSON content as the value
-   - Add `GOOGLE_SHEETS_SPREADSHEET_ID` with your spreadsheet ID
-   - Make sure to set these for "Production", "Preview", and "Development" environments
-
-   **For Netlify:**
-
-   - Go to Site settings → Environment variables
-   - Add the same variables as above
-
-   **For other platforms:**
-
-   - Add the environment variables in your platform's settings/dashboard
-
-3. **Important:** The JSON must be a single-line string. If your platform has issues with special characters, you may need to:
-   - Escape quotes: `\"` instead of `"`
-   - Or use base64 encoding (advanced)
-
-### Getting Your Google Sheets Credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create or select a project
-3. Enable the Google Sheets API
-4. Create a Service Account
-5. Download the JSON key file
-6. Share your Google Sheet with the service account email (found in the JSON file)
-
-### Getting Your Spreadsheet ID
-
-The Spreadsheet ID is in the URL of your Google Sheet:
-
-```
-https://docs.google.com/spreadsheets/d/SPREADSHEET_ID_HERE/edit
-```
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-**Before deploying, make sure to:**
-
-1. Set the environment variables in Vercel (see above)
-2. Share your Google Sheet with the service account email
-3. Redeploy after setting environment variables
-
-### Troubleshooting
-
-If data is not showing in production, use the test endpoint to diagnose issues:
-
-1. **Visit the test endpoint:** `https://your-site.com/api/tasks/test`
-
-   - This will show detailed diagnostics about your Google Sheets connection
-   - Check for errors about permissions, spreadsheet ID, or credentials
-
-2. **Common issues and solutions:**
-
-   **Issue: "Permission denied" or "Access denied"**
-
-   - Solution: Share your Google Sheet with the service account email
-   - Find the service account email in your credentials JSON (field: `client_email`)
-   - In Google Sheets, click "Share" and add that email with "Editor" access
-
-   **Issue: "Spreadsheet not found"**
-
-   - Solution: Verify `GOOGLE_SHEETS_SPREADSHEET_ID` is correct
-   - Get the ID from the URL: `https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit`
-   - Make sure there are no extra spaces or characters
-
-   **Issue: "Sheet not found"**
-
-   - Solution: Check the sheet name (default is "Sheet1")
-   - Set `GOOGLE_SHEETS_SHEET_NAME` environment variable if your sheet has a different name
-   - The test endpoint will show all available sheet names
-
-   **Issue: "Invalid credentials"**
-
-   - Solution: Verify your credentials JSON is correctly formatted
-   - For production, use `GOOGLE_SHEETS_CREDENTIALS_BASE64` (most reliable)
-   - Encode your JSON: `cat credentials.json | base64` (then paste the result)
-   - Or use `GOOGLE_SHEETS_CREDENTIALS_JSON` with the entire JSON as a single-line string
-
-   **Issue: No data showing but no errors**
-
-   - Check that your spreadsheet has data in the correct format:
-     - Column A: id
-     - Column B: date (format: M/D/YYYY, e.g., "12/25/2024")
-     - Column C: text
-     - Column D: completed ("true" or "false")
-     - Column E: created_at
-   - Make sure row 1 is a header row (it will be skipped)
-   - Data should start from row 2
-
-3. **Check Vercel logs:**
-   - Go to your Vercel project → Deployments → Click on a deployment → Logs
-   - Look for error messages or the diagnostic logs (they start with emojis like 📊, ✅, ❌)
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Timeline** — Vertical list of one day's blocks on a single rail, ordered by start time, with a slot for the live now mark. `<Timeline tasks now live onToggle onStatus />`
+- **TimeBlock** — One block: time range, title, optional first step, optional done means, current and status styling, and a tap target that reveals the status control. `<TimeBlock task now current open onToggle onStatus />`
+- **NowIndicator** — Live marker on the rail, labeled with the current `HH:MM`, placed before, inside, or after the blocks. `<NowIndicator time="20:12" />`
+- **SegmentedControl** — Mutually exclusive pill options with a sliding thumb and press feedback. `<SegmentedControl value onChange ariaLabel options={[{ value, label }]} />`
+- **StatusToggle** — Pending / Done / Slipped control for one block, built on the segmented control. `<StatusToggle value onChange label="Status for Deep work" />`

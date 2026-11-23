@@ -26,7 +26,13 @@ export async function GET(request: NextRequest) {
       );
     }
   }
-  const diagnostics: any = {
+  const diagnostics: {
+    timestamp: string;
+    checks: Record<string, unknown>;
+    errors: string[];
+    warnings: string[];
+    summary?: { status: string; message: string };
+  } = {
     timestamp: new Date().toISOString(),
     checks: {},
     errors: [],
@@ -94,7 +100,7 @@ export async function GET(request: NextRequest) {
         title: spreadsheetInfo.data.properties?.title || "Unknown",
         spreadsheetId: spreadsheetId.substring(0, 10) + "...",
         sheets:
-          spreadsheetInfo.data.sheets?.map((s: any) => ({
+          spreadsheetInfo.data.sheets?.map((s) => ({
             title: s.properties?.title,
             sheetId: s.properties?.sheetId,
           })) || [],
@@ -102,14 +108,14 @@ export async function GET(request: NextRequest) {
 
       // Check if the target sheet exists
       const targetSheet = spreadsheetInfo.data.sheets?.find(
-        (s: any) => s.properties?.title === sheetName,
+        (s) => s.properties?.title === sheetName,
       );
 
       if (!targetSheet) {
         diagnostics.warnings.push(
           `Sheet "${sheetName}" not found. Available sheets: ${
             spreadsheetInfo.data.sheets
-              ?.map((s: any) => s.properties?.title)
+              ?.map((s) => s.properties?.title)
               .join(", ") || "none"
           }`,
         );
@@ -133,25 +139,30 @@ export async function GET(request: NextRequest) {
         status: "success",
         message: "All checks passed! Google Sheets connection is working.",
       };
-    } catch (apiError: any) {
+    } catch (apiError: unknown) {
+      const message =
+        apiError instanceof Error ? apiError.message : "Unknown error";
+      const code =
+        typeof apiError === "object" && apiError !== null && "code" in apiError
+          ? apiError.code
+          : undefined;
+
       diagnostics.checks.spreadsheetAccess = {
         status: "failed",
-        error: apiError?.message || "Unknown error",
-        code: apiError?.code,
+        error: message,
+        code,
       };
 
-      if (apiError?.code === 403) {
+      if (code === 403) {
         diagnostics.errors.push(
           "Permission denied. Make sure the spreadsheet is shared with the service account email.",
         );
-      } else if (apiError?.code === 404) {
+      } else if (code === 404) {
         diagnostics.errors.push(
           "Spreadsheet not found. Check that GOOGLE_SHEETS_SPREADSHEET_ID is correct.",
         );
       } else {
-        diagnostics.errors.push(
-          `API error: ${apiError?.message || "Unknown error"}`,
-        );
+        diagnostics.errors.push(`API error: ${message}`);
       }
 
       diagnostics.summary = {
