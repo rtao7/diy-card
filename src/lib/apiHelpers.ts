@@ -1,6 +1,6 @@
 import { getGoogleSheetsClient } from "./googleSheets";
 import { ApiError, API_ERRORS } from "./apiError";
-import { Task } from "./types";
+import { rowToTask as parseRow, taskToRow as serializeTask, Task } from "./taskModel";
 
 /**
  * Configuration for Google Sheets operations
@@ -9,6 +9,8 @@ interface SheetsConfig {
   spreadsheetId: string;
   sheetName: string;
 }
+
+type SheetsClient = Awaited<ReturnType<typeof getGoogleSheetsClient>>;
 
 /**
  * Gets the Google Sheets configuration from environment variables
@@ -35,7 +37,7 @@ export function getSheetsConfig(): SheetsConfig {
  * @returns Result from the handler
  */
 export async function withSheetsClient<T>(
-  handler: (sheets: any, config: SheetsConfig) => Promise<T>,
+  handler: (sheets: SheetsClient, config: SheetsConfig) => Promise<T>,
 ): Promise<T> {
   try {
     const sheets = await getGoogleSheetsClient();
@@ -60,18 +62,18 @@ export async function withSheetsClient<T>(
  * @returns Object with rowIndex and row data, or throws if not found
  */
 export async function findTaskRow(
-  sheets: any,
+  sheets: SheetsClient,
   config: SheetsConfig,
   taskId: string,
-): Promise<{ rowIndex: number; row: any[]; actualRowNumber: number }> {
-  const range = `${config.sheetName}!A2:F1000`;
+): Promise<{ rowIndex: number; row: unknown[]; actualRowNumber: number }> {
+  const range = `${config.sheetName}!A2:J`;
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: config.spreadsheetId,
     range,
   });
 
   const rows = response.data.values || [];
-  const rowIndex = rows.findIndex((row: any) => row[0] === taskId);
+  const rowIndex = rows.findIndex((row) => row[0] === taskId);
 
   if (rowIndex === -1) {
     throw API_ERRORS.NOT_FOUND("Task");
@@ -93,32 +95,15 @@ export async function findTaskRow(
  * @param row - Row data from Google Sheets
  * @returns Task object
  */
-export function rowToTask(row: any[]): Task {
-  return {
-    id: row[0] || "",
-    date: row[1] || "",
-    text: row[2] || "",
-    completed: row[3] === "true",
-    created_at: row[4] || "",
-    timeSpent: row[5] || "",
-  };
+export function rowToTask(row: unknown[]): Task | null {
+  return parseRow((row ?? []).map((cell) => (cell == null ? "" : String(cell))));
 }
 
 /**
- * Converts a Task object to a Google Sheets row
- *
- * @param task - Task object
- * @returns Array of values for Google Sheets
+ * Converts a Task object to a Google Sheets row (columns A–J).
  */
-export function taskToRow(task: Partial<Task> & { id: string }): any[] {
-  return [
-    task.id,
-    task.date || "",
-    task.text || "",
-    task.completed === true ? "true" : "false",
-    task.created_at || new Date().toISOString(),
-    task.timeSpent !== undefined ? String(task.timeSpent) : "",
-  ];
+export function taskToRow(task: Task): string[] {
+  return serializeTask(task);
 }
 
 /**
@@ -129,7 +114,7 @@ export function taskToRow(task: Partial<Task> & { id: string }): any[] {
  * @returns Sheet ID
  */
 export async function getSheetId(
-  sheets: any,
+  sheets: SheetsClient,
   config: SheetsConfig,
 ): Promise<number> {
   const spreadsheet = await sheets.spreadsheets.get({
@@ -137,7 +122,7 @@ export async function getSheetId(
   });
 
   const sheet = spreadsheet.data.sheets?.find(
-    (s: any) => s.properties?.title === config.sheetName,
+    (s) => s.properties?.title === config.sheetName,
   );
 
   if (!sheet || !sheet.properties?.sheetId) {

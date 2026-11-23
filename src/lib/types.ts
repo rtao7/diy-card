@@ -1,25 +1,9 @@
 /**
- * Shared type definitions for the DIY Card application
+ * Shared type definitions for the DIY Card application.
+ * The task shape lives in taskModel so the sheet, the API, and the card agree.
  */
 
-/**
- * Represents a task in the DIY card system
- *
- * @property id - Unique identifier for the task
- * @property date - Date in M/D/YYYY format (e.g., "12/25/2024")
- * @property text - The task description/content
- * @property completed - Whether the task is marked as complete
- * @property created_at - ISO timestamp of when the task was created
- * @property timeSpent - Optional time spent on the task (e.g., "2h", "30m")
- */
-export interface Task {
-  id: string;
-  date: string;
-  text: string;
-  completed: boolean;
-  created_at: string;
-  timeSpent?: string | number;
-}
+export type { Task, TaskStatus, TaskInput, TaskPatch } from "./taskModel";
 
 /**
  * API error response structure
@@ -47,7 +31,8 @@ export function isApiError(error: unknown): error is ApiErrorResponse {
     typeof error === "object" &&
     error !== null &&
     ("apiError" in error ||
-      ("error" in error && typeof (error as any).error === "string"))
+      ("error" in error &&
+        typeof (error as { error?: unknown }).error === "string"))
   );
 }
 
@@ -56,8 +41,8 @@ export function isApiError(error: unknown): error is ApiErrorResponse {
  */
 export interface TaskApiResponse {
   success: boolean;
-  task?: Task;
-  tasks?: Task[];
+  task?: import("./taskModel").Task;
+  tasks?: import("./taskModel").Task[];
   date?: string;
   count?: number;
   message?: string;

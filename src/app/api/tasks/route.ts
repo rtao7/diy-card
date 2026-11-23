@@ -1,159 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGoogleSheetsClient } from "@/lib/googleSheets";
-import { requireApiKey } from "@/lib/auth";
-import { CreateTaskSchema, validateTaskData } from "@/lib/validation";
 import { logger } from "@/lib/logger";
+import { jsonError, sheetFailure, unauthorized } from "@/lib/routeErrors";
+import { getTaskStore } from "@/lib/taskStore";
+import { rangeError } from "@/lib/taskModel";
+import { CreateTaskSchema, validateTaskData } from "@/lib/validation";
+
+export const dynamic = "force-dynamic";
+
+const datePattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
 
 /**
- * GET handler - Fetches tasks for a specific date
- *
- * Usage: GET /api/tasks?date=12/25/2024
- *
- * This is PUBLIC - anyone can read tasks (no authentication needed)
+ * GET /api/tasks?date=M/D/YYYY
+ * Public. Tasks are ordered by start time. Blocks without a start come last.
  */
 export async function GET(request: NextRequest) {
-  try {
-    // Step 1: Get the date from the URL query parameter
-    // Example URL: /api/tasks?date=12/25/2024
-    const { searchParams } = new URL(request.url);
-    const date = searchParams.get("date");
-
-    // Step 2: Check if date was provided
-    if (!date) {
-      return NextResponse.json(
-        {
-          error: "Date parameter is required. Use: /api/tasks?date=12/25/2024",
-        },
-        { status: 400 },
-      );
-    }
-
-    // Step 3: Connect to Google Sheets
-    logger.info("📊 Fetching tasks for date:", date);
-    let sheets;
-    try {
-      sheets = await getGoogleSheetsClient();
-    } catch (authError) {
-      logger.error("❌ Failed to authenticate with Google Sheets:", authError);
-      return NextResponse.json(
-        {
-          error: "Failed to authenticate with Google Sheets",
-          details:
-            authError instanceof Error
-              ? authError.message
-              : "Unknown authentication error",
-          hint: "Check your credentials and ensure the service account email has access to the spreadsheet",
-        },
-        { status: 500 },
-      );
-    }
-
-    // Step 4: Get your spreadsheet ID from environment variables
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
-
-    if (!spreadsheetId) {
-      logger.error("❌ GOOGLE_SHEETS_SPREADSHEET_ID is not set");
-      return NextResponse.json(
-        { error: "Spreadsheet ID not configured" },
-        { status: 500 },
-      );
-    }
-
-    logger.info(
-      "📋 Using spreadsheet ID:",
-      spreadsheetId.substring(0, 10) + "...",
+  const date = new URL(request.url).searchParams.get("date");
+  if (!date || !datePattern.test(date)) {
+    return jsonError(
+      400,
+      "Date parameter is required. Use: /api/tasks?date=12/25/2024",
     );
-    logger.info("📄 Using sheet name:", sheetName);
+  }
 
-    // Step 5: Read data from the sheet
-    // Range: Sheet1!A2:F1000 means:
-    // - Sheet1: the sheet name (configurable via env var)
-    // - A2:F1000: columns A through F, rows 2 to 1000 (skip header row 1)
-    const range = `${sheetName}!A2:F1000`;
-
-    let response;
-    try {
-      response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range,
-      });
-      logger.info("✅ Successfully retrieved data from Google Sheets");
-    } catch (apiError: any) {
-      logger.error("❌ Google Sheets API error:", apiError);
-
-      // Provide helpful error messages based on common issues
-      let errorMessage = apiError?.message || "Unknown error";
-      let hint = "";
-
-      if (
-        apiError?.code === 403 ||
-        errorMessage.includes("permission") ||
-        errorMessage.includes("access")
-      ) {
-        hint =
-          "The service account may not have access to the spreadsheet. Share the spreadsheet with the service account email.";
-      } else if (apiError?.code === 404 || errorMessage.includes("not found")) {
-        hint =
-          "Spreadsheet not found. Check that the GOOGLE_SHEETS_SPREADSHEET_ID is correct and the spreadsheet exists.";
-      } else if (errorMessage.includes("Unable to parse range")) {
-        hint = `Sheet "${sheetName}" may not exist. Check the sheet name or set GOOGLE_SHEETS_SHEET_NAME environment variable.`;
-      }
-
-      return NextResponse.json(
-        {
-          error: "Failed to read from Google Sheets",
-          details: errorMessage,
-          hint,
-          code: apiError?.code,
-        },
-        { status: 500 },
-      );
-    }
-
-    // Step 6: Get the rows (or empty array if no data)
-    const rows = response.data.values || [];
-    logger.info(`📥 Retrieved ${rows.length} total rows from spreadsheet`);
-
-    if (rows.length === 0) {
-      logger.info(
-        "⚠️ No data found in spreadsheet. This might be normal if the sheet is empty.",
-      );
-      // Return empty tasks array instead of error
-      return NextResponse.json({
-        success: true,
-        date,
-        tasks: [],
-        count: 0,
-        message: "No tasks found for this date",
-      });
-    }
-
-    // Step 7: Filter tasks for the requested date and convert to our format
-    // In Google Sheets:
-    // Column A (index 0) = id
-    // Column B (index 1) = date
-    // Column C (index 2) = text
-    // Column D (index 3) = completed (stored as "true" or "false" string)
-    // Column E (index 4) = created_at
-    // Column F (index 5) = time_spent
-    // Validate rows have minimum required columns (at least date column at index 1)
-    const tasks = rows
-      .filter((row) => {
-        // Ensure row has at least 2 elements (id and date) before accessing row[1]
-        return row && row.length >= 2 && row[1] === date;
-      })
-      .map((row) => ({
-        id: row[0] || "", // Column A: id
-        date: row[1] || "", // Column B: date
-        text: row[2] || "", // Column C: text
-        completed: row[3] === "true", // Column D: convert "true"/"false" string to boolean
-        created_at: row[4] || "", // Column E: created_at
-        timeSpent: row[5] || "", // Column F: time_spent
-      }));
-
-    // Step 8: Return the tasks as JSON
-    logger.info(`✅ Returning ${tasks.length} tasks for date ${date}`);
+  try {
+    const tasks = await getTaskStore().listByDate(date);
     return NextResponse.json({
       success: true,
       date,
@@ -161,178 +31,43 @@ export async function GET(request: NextRequest) {
       count: tasks.length,
     });
   } catch (error) {
-    // If something goes wrong, log it and return an error
-    logger.error("❌ Error fetching tasks:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
-    // Always log detailed error for debugging in production
-    logger.error("Error stack:", errorStack);
-    logger.error("Environment check:", {
-      hasCredentialsJson: !!process.env.GOOGLE_SHEETS_CREDENTIALS_JSON,
-      hasCredentialsBase64: !!process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64,
-      hasCredentialsPath: !!process.env.GOOGLE_SHEETS_CREDENTIALS,
-      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      spreadsheetIdSet: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-    });
-
-    // Return detailed error information
-    return NextResponse.json(
-      {
-        error: "Failed to fetch tasks",
-        details: errorMessage,
-        // Include helpful hints based on error type
-        hint: errorMessage.includes("credentials")
-          ? "Check your Google Sheets credentials in environment variables"
-          : errorMessage.includes("Spreadsheet ID")
-            ? "Check that GOOGLE_SHEETS_SPREADSHEET_ID is set correctly"
-            : "Check Vercel logs for more details",
-        // Include environment status (without sensitive data)
-        environmentStatus: {
-          hasCredentials: !!(
-            process.env.GOOGLE_SHEETS_CREDENTIALS_JSON ||
-            process.env.GOOGLE_SHEETS_CREDENTIALS_BASE64 ||
-            process.env.GOOGLE_SHEETS_CREDENTIALS
-          ),
-          hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-        },
-        // Only include stack in development
-        ...(process.env.NODE_ENV === "development" && errorStack
-          ? { stack: errorStack }
-          : {}),
-      },
-      { status: 500 },
-    );
+    logger.error("Error fetching tasks:", error);
+    return sheetFailure(error, "Failed to fetch tasks");
   }
 }
 
 /**
- * POST handler - Creates a new task
- *
- * Usage: POST /api/tasks
- * Headers: Authorization: Bearer YOUR_API_KEY (or X-API-Key: YOUR_API_KEY)
- * Body: { text: string, date: string, completed?: boolean }
- *
- * This requires API key authentication - only authorized users can create tasks
- * GET requests are public (read-only), but POST requires authentication
+ * POST /api/tasks
+ * Creates one task. Requires API_KEY.
  */
 export async function POST(request: NextRequest) {
+  const authError = unauthorized(request);
+  if (authError) return authError;
+
+  let body: unknown;
   try {
-    // Step 0: Check API key authentication (required for write operations)
-    const authError = requireApiKey(request);
-    if (authError) {
-      return NextResponse.json(
-        {
-          error: authError.error,
-          message: authError.message,
-          hint: authError.hint,
-        },
-        { status: authError.status },
-      );
-    }
-
-    // Step 1: Parse and validate the request body
-    const body = await request.json();
-    const validation = validateTaskData(CreateTaskSchema, body);
-
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: validation.error,
-        },
-        { status: 400 },
-      );
-    }
-
-    const { text, date, completed, timeSpent } = validation.data;
-
-    // Step 2: Connect to Google Sheets
-    let sheets;
-    try {
-      sheets = await getGoogleSheetsClient();
-    } catch (authError) {
-      logger.error("❌ Failed to authenticate with Google Sheets:", authError);
-      return NextResponse.json(
-        {
-          error: "Failed to authenticate with Google Sheets",
-          details:
-            authError instanceof Error
-              ? authError.message
-              : "Unknown authentication error",
-        },
-        { status: 500 },
-      );
-    }
-
-    // Step 3: Get your spreadsheet ID from environment variables
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
-
-    if (!spreadsheetId) {
-      return NextResponse.json(
-        { error: "Spreadsheet ID not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Step 4: Generate ID and timestamp
-    const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const created_at = new Date().toISOString();
-    const completedValue = completed === true ? "true" : "false";
-    const timeSpentValue = timeSpent !== undefined ? String(timeSpent) : "";
-
-    // Step 5: Prepare the new row data
-    // Format: [id, date, text, completed, created_at, time_spent]
-    const newRow = [
-      id,
-      date,
-      text.trim(),
-      completedValue,
-      created_at,
-      timeSpentValue,
-    ];
-
-    // Step 6: Append the new row to the sheet
-    // Range: Sheet1!A:F means append to columns A through F
-    const range = `${sheetName}!A:F`;
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range,
-      valueInputOption: "USER_ENTERED", // This allows strings to be entered as-is
-      insertDataOption: "INSERT_ROWS", // Insert a new row
-      requestBody: {
-        values: [newRow],
-      },
+    body = await request.json();
+  } catch {
+    return jsonError(400, "Validation failed", {
+      details: "Request body must be JSON",
     });
+  }
 
-    // Step 7: Return the created task
-    const createdTask = {
-      id,
-      date,
-      text: text.trim(),
-      completed: completed === true,
-      created_at,
-      timeSpent: timeSpentValue,
-    };
+  const validation = validateTaskData(CreateTaskSchema, body);
+  if (!validation.success) {
+    return jsonError(400, "Validation failed", { details: validation.error });
+  }
 
-    return NextResponse.json(
-      {
-        success: true,
-        task: createdTask,
-      },
-      { status: 201 },
-    );
+  const range = rangeError(validation.data.start, validation.data.end);
+  if (range) {
+    return jsonError(400, "Validation failed", { details: range });
+  }
+
+  try {
+    const [task] = await getTaskStore().createMany([validation.data]);
+    return NextResponse.json({ success: true, task }, { status: 201 });
   } catch (error) {
-    // If something goes wrong, log it and return an error
     logger.error("Error creating task:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create task",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    );
+    return sheetFailure(error, "Failed to create task");
   }
 }

@@ -1,93 +1,45 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getTasksForDate,
-  updateTask,
-  deleteTask,
-  createTask,
-} from "@/lib/tasks";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getTasksForDate, updateTaskStatus } from "@/lib/tasks";
 import { rateLimiter } from "@/lib/rateLimiter";
-import { Task } from "@/lib/types";
+import { Task, TaskStatus } from "@/lib/types";
 
-/**
- * React Query hook for fetching tasks for a specific date
- */
 export function useTasksQuery(date: string) {
   return useQuery({
     queryKey: ["tasks", date],
     queryFn: async () => {
-      // Use rate limiter before making request
       await rateLimiter.waitForRateLimit();
       return getTasksForDate(date);
     },
     enabled: !!date,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 30_000,
   });
 }
 
-/**
- * React Query mutation for creating a task
- */
-export function useCreateTaskMutation() {
+export function useUpdateStatusMutation(date: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      text,
-      date,
-      completed,
-      timeSpent,
-    }: {
-      text: string;
-      date: string;
-      completed?: boolean;
-      timeSpent?: string | number;
-    }) => createTask(text, date, completed ?? false, timeSpent),
-    onSuccess: (task, variables) => {
-      // Invalidate and refetch tasks for the date
-      queryClient.invalidateQueries({ queryKey: ["tasks", variables.date] });
+    mutationFn: ({ taskId, status }: { taskId: string; status: TaskStatus }) =>
+      updateTaskStatus(taskId, status),
+    onMutate: async ({ taskId, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["tasks", date] });
+      const previous = queryClient.getQueryData<Task[]>(["tasks", date]);
+      queryClient.setQueryData<Task[]>(["tasks", date], (current = []) =>
+        current.map((task) =>
+          task.id === taskId
+            ? { ...task, status, completed: status === "done" }
+            : task,
+        ),
+      );
+      return { previous };
     },
-  });
-}
-
-/**
- * React Query mutation for updating a task
- */
-export function useUpdateTaskMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      taskId,
-      updates,
-    }: {
-      taskId: string;
-      updates: {
-        text?: string;
-        completed?: boolean;
-        date?: string;
-        timeSpent?: string | number;
-      };
-    }) => updateTask(taskId, updates),
-    onSuccess: (task) => {
-      // Invalidate queries for both old and new dates
-      if (task.date) {
-        queryClient.invalidateQueries({ queryKey: ["tasks", task.date] });
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["tasks", date], context.previous);
       }
     },
-  });
-}
-
-/**
- * React Query mutation for deleting a task
- */
-export function useDeleteTaskMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (taskId: string) => deleteTask(taskId),
-    onSuccess: () => {
-      // Invalidate all task queries since we don't know which date
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", date] });
     },
   });
 }

@@ -65,7 +65,7 @@ export async function getGoogleSheetsClient() {
             .trim();
           credentials = JSON.parse(cleaned);
           methodUsed = "GOOGLE_SHEETS_CREDENTIALS_JSON (cleaned)";
-        } catch (secondParseError) {
+        } catch {
           logger.error("Failed to parse JSON credentials:", parseError);
           throw new Error(
             "GOOGLE_SHEETS_CREDENTIALS_JSON is not valid JSON. Please check your environment variable. Error: " +

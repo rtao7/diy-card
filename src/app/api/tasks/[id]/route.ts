@@ -1,303 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGoogleSheetsClient } from "@/lib/googleSheets";
-import { requireApiKey } from "@/lib/auth";
+import { logger } from "@/lib/logger";
+import {
+  isMissingTask,
+  jsonError,
+  sheetFailure,
+  unauthorized,
+} from "@/lib/routeErrors";
+import { getTaskStore } from "@/lib/taskStore";
+import { rangeError } from "@/lib/taskModel";
 import { UpdateTaskSchema, validateTaskData } from "@/lib/validation";
 
+export const dynamic = "force-dynamic";
+
+type RouteContext = { params: Promise<{ id: string }> };
+
 /**
- * PATCH handler - Updates a task
- *
- * Usage: PATCH /api/tasks/[id]
- * Headers: Authorization: Bearer YOUR_API_KEY (or X-API-Key: YOUR_API_KEY)
- * Body: { text?: string, completed?: boolean, date?: string, timeSpent?: string | number }
- *
- * This requires API key authentication
+ * PATCH /api/tasks/:id
+ * Updates any subset of fields. Requires API_KEY.
+ * Sending `completed` without `status` maps true → done and false → pending.
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const authError = unauthorized(request);
+  if (authError) return authError;
+
+  const { id } = await context.params;
+  if (!id) return jsonError(400, "Task ID is required");
+
+  let body: unknown;
   try {
-    // Check API key authentication
-    const authError = requireApiKey(request);
-    if (authError) {
-      return NextResponse.json(
-        {
-          error: authError.error,
-          message: authError.message,
-          hint: authError.hint,
-        },
-        { status: authError.status },
-      );
-    }
-
-    const { id: taskId } = await params;
-    if (!taskId) {
-      return NextResponse.json(
-        { error: "Task ID is required" },
-        { status: 400 },
-      );
-    }
-
-    // Parse and validate request body
-    const body = await request.json();
-    const validation = validateTaskData(UpdateTaskSchema, body);
-
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: validation.error,
-        },
-        { status: 400 },
-      );
-    }
-
-    const { text, completed, date, timeSpent } = validation.data;
-
-    // Validate that at least one field is being updated
-    if (
-      text === undefined &&
-      completed === undefined &&
-      date === undefined &&
-      timeSpent === undefined
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "At least one field (text, completed, date, or timeSpent) must be provided for update",
-        },
-        { status: 400 },
-      );
-    }
-
-    // Connect to Google Sheets
-    let sheets;
-    try {
-      sheets = await getGoogleSheetsClient();
-    } catch (authError) {
-      console.error("❌ Failed to authenticate with Google Sheets:", authError);
-      return NextResponse.json(
-        {
-          error: "Failed to authenticate with Google Sheets",
-          details:
-            authError instanceof Error
-              ? authError.message
-              : "Unknown authentication error",
-        },
-        { status: 500 },
-      );
-    }
-
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
-
-    if (!spreadsheetId) {
-      return NextResponse.json(
-        { error: "Spreadsheet ID not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Read all rows to find the task
-    const range = `${sheetName}!A2:F1000`;
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
+    body = await request.json();
+  } catch {
+    return jsonError(400, "Validation failed", {
+      details: "Request body must be JSON",
     });
+  }
 
-    const rows = response.data.values || [];
-    const taskRowIndex = rows.findIndex((row) => row[0] === taskId);
+  const validation = validateTaskData(UpdateTaskSchema, body);
+  if (!validation.success) {
+    return jsonError(400, "Validation failed", { details: validation.error });
+  }
 
-    if (taskRowIndex === -1) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    // Get the current row (row index + 2 because we start from row 2, and arrays are 0-indexed)
-    const actualRowNumber = taskRowIndex + 2;
-    const currentRow = rows[taskRowIndex];
-
-    // Prepare updated values
-    const updatedId = currentRow[0] || "";
-    const updatedDate = date !== undefined ? date : currentRow[1] || "";
-    const updatedText = text !== undefined ? text.trim() : currentRow[2] || "";
-    const updatedCompleted =
-      completed !== undefined
-        ? completed === true
-          ? "true"
-          : "false"
-        : currentRow[3] || "false";
-    const updatedCreatedAt = currentRow[4] || new Date().toISOString();
-    const updatedTimeSpent =
-      timeSpent !== undefined ? String(timeSpent) : currentRow[5] || "";
-
-    // Update the row in Google Sheets
-    const updateRange = `${sheetName}!A${actualRowNumber}:F${actualRowNumber}`;
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: updateRange,
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [
-          [
-            updatedId,
-            updatedDate,
-            updatedText,
-            updatedCompleted,
-            updatedCreatedAt,
-            updatedTimeSpent,
-          ],
-        ],
-      },
+  const patch = validation.data;
+  if (
+    patch.text === undefined &&
+    patch.date === undefined &&
+    patch.completed === undefined &&
+    patch.status === undefined &&
+    patch.start === undefined &&
+    patch.end === undefined &&
+    patch.first_step === undefined &&
+    patch.done_means === undefined
+  ) {
+    return jsonError(400, "Validation failed", {
+      details: "At least one field must be provided",
     });
+  }
 
-    // Return the updated task
-    const updatedTask = {
-      id: updatedId,
-      date: updatedDate,
-      text: updatedText,
-      completed: updatedCompleted === "true",
-      created_at: updatedCreatedAt,
-      timeSpent: updatedTimeSpent,
-    };
+  const range = rangeError(patch.start, patch.end);
+  if (range) {
+    return jsonError(400, "Validation failed", { details: range });
+  }
 
-    return NextResponse.json({
-      success: true,
-      task: updatedTask,
-    });
+  try {
+    const task = await getTaskStore().update(id, patch);
+    return NextResponse.json({ success: true, task });
   } catch (error) {
-    console.error("Error updating task:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update task",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    );
+    if (isMissingTask(error)) return jsonError(404, "Task not found");
+    logger.error("Error updating task:", error);
+    return sheetFailure(error, "Failed to update task");
   }
 }
 
 /**
- * DELETE handler - Deletes a task
- *
- * Usage: DELETE /api/tasks/[id]
- * Headers: Authorization: Bearer YOUR_API_KEY (or X-API-Key: YOUR_API_KEY)
- *
- * This requires API key authentication
+ * DELETE /api/tasks/:id
+ * Requires API_KEY.
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const authError = unauthorized(request);
+  if (authError) return authError;
+
+  const { id } = await context.params;
+  if (!id) return jsonError(400, "Task ID is required");
+
   try {
-    // Check API key authentication
-    const authError = requireApiKey(request);
-    if (authError) {
-      return NextResponse.json(
-        {
-          error: authError.error,
-          message: authError.message,
-          hint: authError.hint,
-        },
-        { status: authError.status },
-      );
-    }
-
-    const { id: taskId } = await params;
-    if (!taskId) {
-      return NextResponse.json(
-        { error: "Task ID is required" },
-        { status: 400 },
-      );
-    }
-
-    // Connect to Google Sheets
-    let sheets;
-    try {
-      sheets = await getGoogleSheetsClient();
-    } catch (authError) {
-      console.error("❌ Failed to authenticate with Google Sheets:", authError);
-      return NextResponse.json(
-        {
-          error: "Failed to authenticate with Google Sheets",
-          details:
-            authError instanceof Error
-              ? authError.message
-              : "Unknown authentication error",
-        },
-        { status: 500 },
-      );
-    }
-
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || "Sheet1";
-
-    if (!spreadsheetId) {
-      return NextResponse.json(
-        { error: "Spreadsheet ID not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Read all rows to find the task
-    const range = `${sheetName}!A2:F1000`;
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-
-    const rows = response.data.values || [];
-    const taskRowIndex = rows.findIndex((row) => row[0] === taskId);
-
-    if (taskRowIndex === -1) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    // Get sheet ID from spreadsheet metadata
-    const spreadsheet = await sheets.spreadsheets.get({
-      spreadsheetId,
-    });
-    const sheet = spreadsheet.data.sheets?.find(
-      (s) => s.properties?.title === sheetName,
-    );
-    const sheetId = sheet?.properties?.sheetId;
-
-    if (sheetId === undefined) {
-      return NextResponse.json({ error: "Sheet not found" }, { status: 404 });
-    }
-
-    // Delete the row (row index + 2 because we start from row 2, and arrays are 0-indexed)
-    const actualRowNumber = taskRowIndex + 2;
-
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            deleteDimension: {
-              range: {
-                sheetId,
-                dimension: "ROWS",
-                startIndex: actualRowNumber - 1, // 0-indexed
-                endIndex: actualRowNumber,
-              },
-            },
-          },
-        ],
-      },
-    });
-
+    await getTaskStore().delete(id);
     return NextResponse.json({
       success: true,
       message: "Task deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting task:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to delete task",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    );
+    if (isMissingTask(error)) return jsonError(404, "Task not found");
+    logger.error("Error deleting task:", error);
+    return sheetFailure(error, "Failed to delete task");
   }
 }
