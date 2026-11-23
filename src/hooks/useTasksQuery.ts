@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTasksForDate, updateTaskStatus } from "@/lib/tasks";
+import {
+  createTask,
+  deleteTask,
+  getTasksForDate,
+  updateTask,
+  updateTaskStatus,
+} from "@/lib/tasks";
 import { rateLimiter } from "@/lib/rateLimiter";
-import { Task, TaskStatus } from "@/lib/types";
+import { Task, TaskInput, TaskPatch, TaskStatus } from "@/lib/types";
 
 export function useTasksQuery(date: string) {
   return useQuery({
@@ -12,6 +18,37 @@ export function useTasksQuery(date: string) {
     },
     enabled: !!date,
     staleTime: 30_000,
+  });
+}
+
+export function useCreateTaskMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TaskInput) => createTask(input),
+    onSuccess: (task) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", task.date] });
+    },
+  });
+}
+
+export function useUpdateTaskMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, updates }: { taskId: string; updates: TaskPatch }) =>
+      updateTask(taskId, updates),
+    onSuccess: (task) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", task.date] });
+    },
+  });
+}
+
+export function useDeleteTaskMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) => deleteTask(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 

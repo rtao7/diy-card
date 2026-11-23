@@ -1,6 +1,6 @@
 # diy card
 
-Rui's daily plan. An assistant writes the next day's blocks through the API each night, and reads them back at check-ins. The card shows one day as a timeline. Tap a block to mark it pending, done, or slipped.
+Rui's daily plan. An assistant writes the next day's blocks through the API each night, and reads them back at check-ins. The screen is the original analog card: a horizontal day carousel, a white card with a punch-hole header, and one line per task. A time range sits in the old minutes slot. Tap the diamond to set pending, done, or slipped, and to read the first step and what done means.
 
 ## Design system
 
@@ -16,7 +16,7 @@ The card uses [ray-ui](https://github.com/Rtao7/ray-design-system), the package 
 @import "ray-ui/tokens.css";
 ```
 
-The card uses `Button` and `Text` from `ray-ui`. Color, type, spacing, radius, and motion all come from those tokens, including the neutral gray hairlines. `ReplyBox` and `ChatComposer` are chat controls, so they are not on the plan.
+Color, type, radius, and motion on the card come from those tokens (the stone, gray, and neutral ramps). The card keeps its own layout and the existing outline buttons. `Button`, `Text`, `ReplyBox`, and `ChatComposer` from ray-ui are not on this screen: the first two would change the button shape, and the last two are chat controls.
 
 Components this screen needed and ray-ui does not ship yet are built locally under `src/components/day/`. They are listed under [Missing from ray-design-system](#missing-from-ray-design-system).
 
@@ -250,10 +250,7 @@ Share the sheet with the service account email as an editor. On Vercel, set the 
 
 ## Missing from ray-design-system
 
-Built in `src/components/day/` until they exist in ray-ui. Each one uses ray tokens only.
+Built in `src/components/day/` until they exist in ray-ui. Each one uses ray tokens only. The analog card uses these two. The timeline, time-block row, and now marker from the earlier pass are not part of this screen.
 
-- **Timeline** — Vertical list of one day's blocks on a single rail, ordered by start time, with a slot for the live now mark. `<Timeline tasks now live onToggle onStatus />`
-- **TimeBlock** — One block: time range, title, optional first step, optional done means, current and status styling, and a tap target that reveals the status control. `<TimeBlock task now current open onToggle onStatus />`
-- **NowIndicator** — Live marker on the rail, labeled with the current `HH:MM`, placed before, inside, or after the blocks. `<NowIndicator time="20:12" />`
-- **SegmentedControl** — Mutually exclusive pill options with a sliding thumb and press feedback. `<SegmentedControl value onChange ariaLabel options={[{ value, label }]} />`
-- **StatusToggle** — Pending / Done / Slipped control for one block, built on the segmented control. `<StatusToggle value onChange label="Status for Deep work" />`
+- **SegmentedControl** — Mutually exclusive options with a sliding thumb and press feedback. `<SegmentedControl value onChange ariaLabel options={[{ value, label }]} />`
+- **StatusToggle** — Pending / Done / Slipped control for one task, built on the segmented control. `<StatusToggle value onChange label="Status for Deep work" />`
