@@ -73,8 +73,10 @@
   flex-direction: column;
   align-items: stretch;
   width: 100%;
+  min-width: 0;
   margin: 0;
   padding: var(--space-md);
+  white-space: normal;
   border: 0;
   border-radius: var(--radius-surface);
   background: transparent;
@@ -113,9 +115,22 @@
   transition: color var(--duration-base) var(--ease-out);
 }
 
-.title {
+.title,
+.note {
   display: block;
+  min-width: 0;
+  max-width: 100%;
   margin-top: var(--space-2xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin-top: var(--space-xs);
+}
+
+.title + .note {
+  margin-top: var(--space-sm);
 }
 
 .done .title {
@@ -147,7 +162,10 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-xs);
+  min-width: 0;
+  max-width: 100%;
   margin-top: var(--space-xs);
+  overflow-wrap: anywhere;
 }
 
 .duration {

@@ -344,6 +344,42 @@ export function formatRange(task: Task): string {
   return "Anytime";
 }
 
+/**
+ * A single paragraph up to this length stays the block title.
+ * Longer copy, and anything with a paragraph break, is a note.
+ */
+export const TASK_TITLE_MAX_LENGTH = 500;
+
+export type TaskTextParts = {
+  title: string;
+  body: string;
+};
+
+/**
+ * Split task text for display. Every non-space character is kept:
+ * a short first line can be the title, and the rest is the note body.
+ */
+export function splitTaskText(text: string): TaskTextParts {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!normalized) return { title: "", body: "" };
+
+  const breakAt = normalized.indexOf("\n");
+  if (breakAt === -1) {
+    if (normalized.length <= TASK_TITLE_MAX_LENGTH) {
+      return { title: normalized, body: "" };
+    }
+    return { title: "", body: normalized };
+  }
+
+  const first = normalized.slice(0, breakAt).trim();
+  const rest = normalized.slice(breakAt + 1).replace(/^\n+/, "").trim();
+  if (first.length > 0 && first.length <= TASK_TITLE_MAX_LENGTH) {
+    if (!rest) return { title: first, body: "" };
+    return { title: first, body: rest };
+  }
+  return { title: "", body: normalized };
+}
+
 export function formatSheetDate(date: Date): string {
   return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
 }

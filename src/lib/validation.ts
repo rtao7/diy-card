@@ -14,16 +14,30 @@ const noteSchema = z.string().max(280, "Must be 280 characters or fewer");
 export const TaskStatusSchema = z.enum(["pending", "done", "slipped"]);
 
 /**
+ * Google Sheets stores at most 50,000 characters in one cell. The cap sits
+ * on that ceiling so a learning note fits in one entry, and a longer value
+ * fails here instead of as a sheet write error.
+ */
+export const MAX_TASK_TEXT_LENGTH = 50_000;
+
+function taskText(emptyMessage: string) {
+  return z
+    .string()
+    .trim()
+    .min(1, emptyMessage)
+    .max(
+      MAX_TASK_TEXT_LENGTH,
+      `Task text must be ${MAX_TASK_TEXT_LENGTH} characters or fewer`,
+    );
+}
+
+/**
  * One block. `completed` is the legacy boolean: true means done, false means pending.
  * `status` wins when both are sent.
  */
 export const CreateTaskSchema = z.object({
   date: dateSchema,
-  text: z
-    .string()
-    .trim()
-    .min(1, "Task text is required")
-    .max(500, "Task text must be less than 500 characters"),
+  text: taskText("Task text is required"),
   completed: z.boolean().optional(),
   status: TaskStatusSchema.optional(),
   start: clockSchema.optional(),
@@ -46,12 +60,7 @@ export const BatchCreateSchema = z.object({
 
 export const UpdateTaskSchema = z.object({
   date: dateSchema.optional(),
-  text: z
-    .string()
-    .trim()
-    .min(1, "Task text cannot be empty")
-    .max(500, "Task text must be less than 500 characters")
-    .optional(),
+  text: taskText("Task text cannot be empty").optional(),
   completed: z.boolean().optional(),
   status: TaskStatusSchema.optional(),
   start: clockSchema.optional(),
