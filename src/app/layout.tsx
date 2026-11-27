@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MiniMusicPlayer } from "@/components/music/MiniMusicPlayer";
 import { ReactQueryProvider } from "@/lib/react-query";
+import playerStyles from "@/components/music/MiniMusicPlayer.module.css";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,7 +30,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ReactQueryProvider>{children}</ReactQueryProvider>
+        <ReactQueryProvider>
+          <div className={playerStyles.shell}>
+            <div className={playerStyles.content}>{children}</div>
+            {/* Stays mounted across routes, so playback survives navigation. */}
+            <MiniMusicPlayer />
+          </div>
+        </ReactQueryProvider>
       </body>
     </html>
   );

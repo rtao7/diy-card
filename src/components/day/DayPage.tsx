@@ -45,6 +45,8 @@ export function DayPage() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      // The player seeks with these keys and marks the event handled.
+      if (event.defaultPrevented) return;
       const target = event.target;
       if (
         target instanceof HTMLElement &&
