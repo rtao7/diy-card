@@ -43,15 +43,11 @@
   padding: var(--space-md);
   border: 0;
   border-radius: var(--radius-surface);
-  background: transparent;
+  background: var(--color-bg-raised);
+  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
   transition:
     background-color var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out);
-}
-
-.current {
-  background: var(--color-bg-raised);
-  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 
 .slipped {

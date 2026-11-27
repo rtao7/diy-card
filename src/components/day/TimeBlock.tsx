@@ -35,7 +35,6 @@ export function TimeBlock({ task, now, current }: TimeBlockProps) {
       <div
         className={[
           styles.card,
-          current ? styles.current : "",
           task.status === "done" ? styles.done : "",
           task.status === "slipped" ? styles.slipped : "",
         ]
