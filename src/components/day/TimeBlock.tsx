@@ -5,6 +5,7 @@ import {
   blockProgress,
   formatDuration,
   formatRange,
+  splitTaskText,
   Task,
   TaskStatus,
 } from "@/lib/taskModel";
@@ -16,6 +17,13 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   done: "Done",
   slipped: "Slipped",
 };
+
+/** Accessible name for the status control. The visible note stays complete. */
+function statusControlLabel(text: string): string {
+  const line = text.split("\n", 1)[0]?.trim() || "this block";
+  const short = line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
+  return `Status for ${short}`;
+}
 
 type TimeBlockProps = {
   task: Task;
@@ -29,7 +37,7 @@ type TimeBlockProps = {
 };
 
 /**
- * Local stand-in. One planned block: time range, title, first step, done means.
+ * Local stand-in. One planned block: time range, title or note, first step, done means.
  */
 export function TimeBlock({
   task,
@@ -45,6 +53,8 @@ export function TimeBlock({
   const progress = current ? blockProgress(task, now) : 0;
   const panelId = `status-${task.id}`;
   const status = STATUS_LABEL[task.status];
+  const parts = splitTaskText(task.text);
+  const statusName = statusControlLabel(parts.title || parts.body);
 
   return (
     <li
@@ -88,14 +98,26 @@ export function TimeBlock({
               {status}
             </Text>
           </span>
-          <Text
-            as="span"
-            variant="heading-sm"
-            tone={task.status === "done" ? "muted" : "default"}
-            className={styles.title}
-          >
-            {task.text}
-          </Text>
+          {parts.title ? (
+            <Text
+              as="span"
+              variant="heading-sm"
+              tone={task.status === "done" ? "muted" : "default"}
+              className={styles.title}
+            >
+              {parts.title}
+            </Text>
+          ) : null}
+          {parts.body ? (
+            <Text
+              as="span"
+              variant="body"
+              tone={task.status === "done" ? "muted" : "default"}
+              className={styles.note}
+            >
+              {parts.body}
+            </Text>
+          ) : null}
           {task.first_step ? (
             <span className={styles.meta}>
               <Text as="span" variant="caption" tone="muted">
@@ -139,7 +161,7 @@ export function TimeBlock({
             <StatusToggle
               value={task.status}
               onChange={onStatus}
-              label={`Status for ${task.text}`}
+              label={statusName}
               disabled={saving}
             />
             {error ? (

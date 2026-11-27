@@ -14,8 +14,10 @@ import {
   parseClock,
   rowToTask,
   sortTasks,
+  splitTaskText,
   statusFromCells,
   taskToRow,
+  TASK_TITLE_MAX_LENGTH,
   type Task,
 } from "./taskModel";
 
@@ -218,6 +220,32 @@ describe("mock sheet", () => {
     await assert.rejects(() => store.updateStatus("missing", "done"), /Task not found/);
   });
 
+  it("keeps a multi-paragraph note intact through create and update", async () => {
+    const note = [
+      "What I learned",
+      "",
+      "The first pass treated the block as a title. ".repeat(20).trim(),
+      "",
+      "A second paragraph should stay in the same entry, including this long token:",
+      "https://example.com/" + "segment/".repeat(30),
+    ].join("\n");
+    assert.ok(note.length > 500);
+
+    const store = createMemoryTaskStore();
+    const [created] = await store.createMany([
+      { date: "11/27/2026", text: `  ${note}  ` },
+    ]);
+    assert.equal(created.text, note);
+
+    const listed = await store.listByDate("11/27/2026");
+    assert.equal(listed[0]?.text, note);
+
+    const extra = `${note}\n\nOne more line after the edit.`;
+    const updated = await store.update(created.id, { text: extra });
+    assert.equal(updated.text, extra);
+    assert.equal((await store.listByDate("11/27/2026"))[0]?.text, extra);
+  });
+
   it("seeds a day with a current block, one done, and one slipped", () => {
     for (const hour of [0, 6, 12, 18, 23]) {
       const now = new Date(2026, 10, 23, hour, 10, 0);
@@ -243,5 +271,50 @@ describe("mock sheet", () => {
     assert.ok(tasks.every((task) => hasTimeRange(task)));
     assert.equal(tasks[0]?.date, formatSheetDate(new Date(2026, 10, 23, 9, 0, 0)));
     assert.ok(tasks.some((task) => clockToMinutes(task.start) != null));
+  });
+});
+
+describe("task text layout", () => {
+  it("keeps a short block as a title", () => {
+    assert.deepEqual(splitTaskText("Deep work"), {
+      title: "Deep work",
+      body: "",
+    });
+    assert.deepEqual(splitTaskText("x".repeat(TASK_TITLE_MAX_LENGTH)), {
+      title: "x".repeat(TASK_TITLE_MAX_LENGTH),
+      body: "",
+    });
+  });
+
+  it("lays a longer single paragraph out as a note", () => {
+    const text = "x".repeat(TASK_TITLE_MAX_LENGTH + 1);
+    assert.deepEqual(splitTaskText(text), { title: "", body: text });
+  });
+
+  it("keeps every paragraph of a note, with a short first line as the title", () => {
+    const body = [
+      "The constraint was the cell, not the idea.",
+      "",
+      "I want the reflection in the same entry.",
+    ].join("\n");
+    const text = `What I learned\n\n${body}`;
+    const parts = splitTaskText(text);
+    assert.equal(parts.title, "What I learned");
+    assert.equal(parts.body, body);
+    assert.equal(parts.body.includes("\n\n"), true);
+  });
+
+  it("does not drop a note whose first line is already a paragraph", () => {
+    const text = `${"word ".repeat(120).trim()}\n\nSecond paragraph.`;
+    const parts = splitTaskText(text);
+    assert.equal(parts.title, "");
+    assert.equal(parts.body, text);
+  });
+
+  it("normalizes Windows newlines without losing lines", () => {
+    assert.deepEqual(splitTaskText("Title\r\n\r\nLine two\r\nLine three"), {
+      title: "Title",
+      body: "Line two\nLine three",
+    });
   });
 });

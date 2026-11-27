@@ -59,7 +59,7 @@ Production base: `https://diy-card.vercel.app`
 
 `X-API-Key: $API_KEY` works too. The card itself updates a status through a server action, so the browser never sees the key. Assistants should use the routes below.
 
-Times must be `HH:MM`. `end` must be later than `start` on the same day. Dates must be `M/D/YYYY`.
+Times must be `HH:MM`. `end` must be later than `start` on the same day. Dates must be `M/D/YYYY`. `text` may be a multi-paragraph note of up to 50,000 characters, which is one Google Sheets cell.
 
 ### Read one day
 
