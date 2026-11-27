@@ -37,12 +37,11 @@
 
 .card {
   min-width: 0;
-  border: var(--border-default) solid transparent;
+  border: 0;
   border-radius: var(--radius-surface);
   background: transparent;
   transition:
     background-color var(--duration-base) var(--ease-out),
-    border-color var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out);
 }
 
@@ -53,19 +52,25 @@
 .current,
 .open {
   background: var(--color-bg-raised);
-  border-color: var(--color-border-neutral);
-  box-shadow: var(--shadow-border);
+  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 
 .current:hover,
 .open:hover {
   background: var(--color-bg-raised);
-  border-color: var(--color-border-neutral-hover);
+  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.10);
+}
+
+/* Done stays on the quieter hairline. Hover does not thicken the edge. */
+.done.current,
+.done.open,
+.done.current:hover,
+.done.open:hover {
+  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 
 .slipped {
-  border-style: dashed;
-  border-color: var(--color-border-neutral);
+  border: var(--border-default) dashed var(--color-border-neutral);
 }
 
 .hit {
