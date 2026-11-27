@@ -36,7 +36,11 @@
 }
 
 .card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
+  padding: var(--space-md);
   border: 0;
   border-radius: var(--radius-surface);
   background: transparent;
@@ -45,63 +49,13 @@
     box-shadow var(--duration-base) var(--ease-out);
 }
 
-.card:hover {
-  background: var(--color-quiet-hover);
-}
-
-.current,
-.open {
+.current {
   background: var(--color-bg-raised);
-  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
-}
-
-.current:hover,
-.open:hover {
-  background: var(--color-bg-raised);
-  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.10);
-}
-
-/* Done stays on the quieter hairline. Hover does not thicken the edge. */
-.done.current,
-.done.open,
-.done.current:hover,
-.done.open:hover {
   box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
 }
 
 .slipped {
   border: var(--border-default) dashed var(--color-border-neutral);
-}
-
-.hit {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: var(--space-md);
-  white-space: normal;
-  border: 0;
-  border-radius: var(--radius-surface);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-spring);
-}
-
-.hit:active {
-  transform: scale(0.985);
-}
-
-.hit:focus {
-  outline: none;
-}
-
-.hit:focus-visible {
-  outline: 2px solid var(--color-focus-neutral);
-  outline-offset: 2px;
 }
 
 .top {
@@ -114,10 +68,6 @@
 .time {
   font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
-}
-
-.status {
-  transition: color var(--duration-base) var(--ease-out);
 }
 
 .title,
@@ -176,39 +126,4 @@
 .duration {
   display: block;
   margin-top: var(--space-xs);
-}
-
-.panel,
-.panelOpen {
-  display: grid;
-  transition: grid-template-rows var(--duration-base) var(--ease-decelerate);
-}
-
-.panel {
-  grid-template-rows: 0fr;
-}
-
-.panelOpen {
-  grid-template-rows: 1fr;
-}
-
-.panelInner {
-  overflow: hidden;
-  min-height: 0;
-}
-
-.panelOpen .panelInner {
-  padding: 0 var(--space-md) var(--space-md);
-}
-
-.error {
-  display: block;
-  margin-top: var(--space-xs);
-  color: var(--color-text);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hit:active {
-    transform: none;
-  }
 }

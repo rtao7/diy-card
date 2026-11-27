@@ -2,13 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Button, Text } from "ray-ui";
-import { useTasksQuery, useUpdateStatusMutation } from "@/hooks/useTasksQuery";
-import {
-  formatSheetDate,
-  shiftDay,
-  Task,
-  TaskStatus,
-} from "@/lib/taskModel";
+import { useTasksQuery } from "@/hooks/useTasksQuery";
+import { formatSheetDate, shiftDay } from "@/lib/taskModel";
 import { Timeline } from "./Timeline";
 import styles from "./DayPage.module.css";
 
@@ -18,22 +13,6 @@ function startOfDay(date: Date): Date {
 
 function sameDay(a: Date, b: Date): boolean {
   return formatSheetDate(a) === formatSheetDate(b);
-}
-
-function summary(tasks: Task[]): string {
-  const counts = { pending: 0, done: 0, slipped: 0 };
-  for (const task of tasks) counts[task.status] += 1;
-  const parts: string[] = [];
-  if (counts.pending) {
-    parts.push(`${counts.pending} pending`);
-  }
-  if (counts.done) {
-    parts.push(`${counts.done} done`);
-  }
-  if (counts.slipped) {
-    parts.push(`${counts.slipped} slipped`);
-  }
-  return parts.join(" · ");
 }
 
 function Chevron({ direction }: { direction: "left" | "right" }) {
@@ -48,49 +27,6 @@ function Chevron({ direction }: { direction: "left" | "right" }) {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function DayTimeline({
-  date,
-  tasks,
-  now,
-  live,
-}: {
-  date: string;
-  tasks: Task[];
-  now: Date;
-  live: boolean;
-}) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [errorId, setErrorId] = useState<string | null>(null);
-  const statusMutation = useUpdateStatusMutation(date);
-
-  function changeStatus(taskId: string, status: TaskStatus) {
-    setErrorId(null);
-    statusMutation.mutate(
-      { taskId, status },
-      {
-        onError: () => setErrorId(taskId),
-      },
-    );
-  }
-
-  return (
-    <Timeline
-      tasks={tasks}
-      now={now}
-      live={live}
-      openId={openId}
-      savingId={
-        statusMutation.isPending
-          ? (statusMutation.variables?.taskId ?? null)
-          : null
-      }
-      errorId={errorId}
-      onToggle={(id) => setOpenId((current) => (current === id ? null : id))}
-      onStatus={changeStatus}
-    />
   );
 }
 
@@ -131,7 +67,6 @@ export function DayPage() {
     month: "long",
     day: "numeric",
   });
-  const line = summary(tasks);
 
   return (
     <main className={styles.page}>
@@ -149,11 +84,6 @@ export function DayPage() {
           <Text variant="body" tone="muted" className={styles.date}>
             {monthDay}
           </Text>
-          {line ? (
-            <Text as="p" variant="caption" tone="muted" className={styles.summary}>
-              {line}
-            </Text>
-          ) : null}
         </header>
 
         <div className={styles.nav}>
@@ -208,13 +138,7 @@ export function DayPage() {
             </Text>
           </div>
         ) : (
-          <DayTimeline
-            key={date}
-            date={date}
-            tasks={tasks}
-            now={now}
-            live={isToday}
-          />
+          <Timeline tasks={tasks} now={now} live={isToday} />
         )}
       </div>
     </main>
