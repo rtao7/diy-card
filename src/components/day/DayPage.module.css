@@ -31,10 +31,6 @@
   margin-top: var(--space-2xs);
 }
 
-.summary {
-  margin-top: var(--space-sm);
-}
-
 .nav {
   display: flex;
   align-items: center;

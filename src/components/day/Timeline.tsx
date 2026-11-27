@@ -8,7 +8,6 @@ import {
   nowPlacement,
   sortTasks,
   Task,
-  TaskStatus,
 } from "@/lib/taskModel";
 import { NowIndicator } from "./NowIndicator";
 import { TimeBlock } from "./TimeBlock";
@@ -18,27 +17,13 @@ type TimelineProps = {
   tasks: Task[];
   now: Date;
   live: boolean;
-  openId: string | null;
-  savingId: string | null;
-  errorId: string | null;
-  onToggle: (id: string) => void;
-  onStatus: (id: string, status: TaskStatus) => void;
 };
 
 /**
  * Local stand-in. A compact day timeline ordered by start time,
  * with the live now mark and the current block called out.
  */
-export function Timeline({
-  tasks,
-  now,
-  live,
-  openId,
-  savingId,
-  errorId,
-  onToggle,
-  onStatus,
-}: TimelineProps) {
+export function Timeline({ tasks, now, live }: TimelineProps) {
   const ordered = sortTasks(tasks);
   const timed = ordered.filter(hasTimeRange);
   const untimed = ordered.filter((task) => !hasTimeRange(task));
@@ -59,11 +44,6 @@ export function Timeline({
         task={task}
         now={now}
         current={task.id === activeId}
-        open={openId === task.id}
-        saving={savingId === task.id}
-        error={errorId === task.id}
-        onToggle={() => onToggle(task.id)}
-        onStatus={(status) => onStatus(task.id, status)}
       />,
     ];
   });
@@ -83,17 +63,7 @@ export function Timeline({
           </Text>
           <ol className={styles.list}>
             {untimed.map((task) => (
-              <TimeBlock
-                key={task.id}
-                task={task}
-                now={now}
-                current={false}
-                open={openId === task.id}
-                saving={savingId === task.id}
-                error={errorId === task.id}
-                onToggle={() => onToggle(task.id)}
-                onStatus={(status) => onStatus(task.id, status)}
-              />
+              <TimeBlock key={task.id} task={task} now={now} current={false} />
             ))}
           </ol>
         </section>

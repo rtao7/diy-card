@@ -1,6 +1,6 @@
 # diy card
 
-Rui's daily plan. An assistant writes the next day's blocks through the API each night, and reads them back at check-ins. The card shows one day as a timeline. Tap a block to mark it pending, done, or slipped.
+Rui's daily plan. An assistant writes the next day's blocks through the API each night, and reads them back at check-ins. The card shows one day as a timeline of read-only blocks.
 
 ## Design system
 
@@ -57,7 +57,7 @@ Production base: `https://diy-card.vercel.app`
 -H "Authorization: Bearer $API_KEY"
 ```
 
-`X-API-Key: $API_KEY` works too. The card itself updates a status through a server action, so the browser never sees the key. Assistants should use the routes below.
+`X-API-Key: $API_KEY` works too. Assistants should use the routes below. The browser never sees the key.
 
 Times must be `HH:MM`. `end` must be later than `start` on the same day. Dates must be `M/D/YYYY`. `text` may be a multi-paragraph note of up to 50,000 characters, which is one Google Sheets cell.
 
@@ -252,8 +252,6 @@ Share the sheet with the service account email as an editor. On Vercel, set the 
 
 Built in `src/components/day/` until they exist in ray-ui. Each one uses ray tokens only.
 
-- **Timeline** — Vertical list of one day's blocks on a single rail, ordered by start time, with a slot for the live now mark. `<Timeline tasks now live onToggle onStatus />`
-- **TimeBlock** — One block: time range, title, optional first step, optional done means, current and status styling, and a tap target that reveals the status control. `<TimeBlock task now current open onToggle onStatus />`
+- **Timeline** — Vertical list of one day's blocks on a single rail, ordered by start time, with a slot for the live now mark. `<Timeline tasks now live />`
+- **TimeBlock** — One read-only block: time range, title, optional first step, optional done means, with the current block called out. `<TimeBlock task now current />`
 - **NowIndicator** — Live marker on the rail, labeled with the current `HH:MM`, placed before, inside, or after the blocks. `<NowIndicator time="20:12" />`
-- **SegmentedControl** — Mutually exclusive pill options with a sliding thumb and press feedback. `<SegmentedControl value onChange ariaLabel options={[{ value, label }]} />`
-- **StatusToggle** — Pending / Done / Slipped control for one block, built on the segmented control. `<StatusToggle value onChange label="Status for Deep work" />`
