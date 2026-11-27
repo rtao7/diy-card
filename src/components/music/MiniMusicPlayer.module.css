@@ -1,0 +1,226 @@
+/*
+  The day column is 38rem and centered, so its left edge is (100% - 38rem) / 2.
+  A 15rem card inset by --space-lg clears that column from 73rem up.
+  Below that, the card docks in the layout footer instead of covering the timeline.
+*/
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.player {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "cover copy"
+    "controls controls"
+    "times times"
+    "scrub scrub";
+  column-gap: var(--space-sm);
+  row-gap: var(--space-xs);
+  align-items: center;
+  flex: none;
+  width: min(15rem, calc(100% - 2 * var(--space-md)));
+  margin: var(--space-sm) 0 calc(var(--space-md) + env(safe-area-inset-bottom, 0px))
+    max(var(--space-md), calc((100% - 38rem) / 2));
+  padding: var(--space-md);
+  border: 0;
+  border-radius: var(--radius-surface);
+  background: var(--color-bg-raised);
+  box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+  user-select: none;
+}
+
+.cover {
+  grid-area: cover;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.cover svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.copy {
+  grid-area: copy;
+  min-width: 0;
+  align-self: center;
+}
+
+.title,
+.artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.skip,
+.play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.skip svg,
+.play svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+}
+
+.skip {
+  width: 2rem;
+  height: 2rem;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.skip:hover {
+  background: var(--color-quiet-hover);
+}
+
+.play {
+  width: 2.25rem;
+  height: 2.25rem;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.play:hover {
+  background: var(--color-accent-hover);
+}
+
+.play:active {
+  background: var(--color-accent-active);
+}
+
+.play[aria-pressed="false"] svg {
+  transform: translateX(0.5px);
+}
+
+.skip:active,
+.play:active {
+  transform: scale(0.97);
+}
+
+.skip:focus,
+.play:focus,
+.scrub:focus {
+  outline: none;
+}
+
+.skip:focus-visible,
+.play:focus-visible,
+.scrub:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.times {
+  grid-area: times;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.scrub {
+  grid-area: scrub;
+  display: flex;
+  align-items: center;
+  height: 0.75rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.track {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width var(--duration-slow) var(--ease-decelerate);
+}
+
+.scrubbing .fill {
+  transition: none;
+}
+
+@media (min-width: 73rem) {
+  .shell {
+    display: block;
+    height: auto;
+  }
+
+  .content {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .player {
+    position: fixed;
+    z-index: 2;
+    top: var(--space-3xl);
+    left: var(--space-lg);
+    width: 15rem;
+    margin: 0;
+    row-gap: var(--space-sm);
+  }
+
+  .cover {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip:active,
+  .play:active {
+    transform: none;
+  }
+}
